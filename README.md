@@ -22,7 +22,7 @@ and to find a composition that works.
 
 Every hour, my agent in the cloud runs
 'mapbots/[get-strat-data](https://github.com/mapbots/get-strat-data)',
-which merges and massages NapBots' latest data, and uploads this at
+which merges and massages the latest data from NapBots, and uploads this at
 mapbots/data/[strats.json](https://raw.githubusercontent.com/mapbots/data/main/strats.json).
 The Mapbots app builds on that data.
 
@@ -65,19 +65,26 @@ Among the many customization options (incl. sizes, colors, ordering),
 
 ### Further info:
 
-- Bots are named by (three- or) four-letter abbreviations.
+- Bots are named by maximum-four-letter abbreviations.
   This makes them consistent to use as variable names in the `calcs`.
   For example: `'cat'`, `'lion'`, `'hors'` (not horsE), etc.
-- Daily-performance values are shown in tooltips
+  - NapBots gave these **animal names** to their bots in 2021.
+    But now they've given different names to their bots again, and they
+    may do so again later, so here we just keep the cute names.
+  The bots' more permanent ‘strategy-code’ identifiers are shown too.
+- Daily-performance values are shown in **tooltips**
   that appear when you mouse over the colored cells.
   Most other cells have explanatory tooltips too.
-- Day-performance column headers show date tags like `'210801'`,
+- Day-performance column headers show **date tags** like `'210801'`,
   which is shorthand for `'2021-08-01'`.
-- Performance-summary columns (right part of map) show _factors_ rather than
-  percentages. This is more intuitive for crypto-size wins/losses.
+- Performance-summary columns (right part of map) show **performance factors**
+  ([‘fold changes’](https://en.wikipedia.org/wiki/Fold_change)) rather than
+  percentages. This is more intuitive for summarizing large,
+  crypto-size wins and losses.
 
-- Other features: creating permalinks, downloading as image, copying TSV data
-  (click on column headers), hotkeys, etc. You will find it all on the map.
+- Other features: creating **permalinks**, downloading as **image**,
+  copying **TSV data** (click on column headers), hotkeys, etc.
+  You will find it all on the map.
   For more info, check comments in the [source code](index.html).
 
 
@@ -86,25 +93,16 @@ Among the many customization options (incl. sizes, colors, ordering),
 Mapbots was created for personal use by a NapBots user,
 who is *not* affiliated with NapBots.
 
-I spent many weeks on this project, in order to recover from my
-initial losses due to having no good overview of what was going on.
+I am sharing this overview- and exploration-app
+so _you_ can benefit from it too. 😍
 
-I decided to share this Lambo of an exploration app,
-so _you_ can benefit from it too.
-Please don't overload me with feature requests and expect me to work for free
-for you now. I got too much else to do!
-I hope you can be happy with the power you get!
-😍
+► Please share your Mapbots explorations and as Permalinks
+  with the NapBots community!
+  High-performance, low-drawdown bot allocations is what we're all looking for.
 
-Do share your Mapbots explorations as Permalinks with the NapBots community!
-
-
-## Tips
-
-If Mapbots guides you to big profits you otherwise wouldn't have known how
-to get:
-kindly reciprocate the generosity and tip me in USDT/etc at the addresses
-included on the [map](https://mapbots.github.io).
+► If Mapbots guides you to big profits you otherwise wouldn't have known how
+to get: kindly reciprocate the generosity and tip me at the address
+found on the [map](https://mapbots.github.io).
 🥰
 
 
