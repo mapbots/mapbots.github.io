@@ -471,7 +471,7 @@ function extendOpt(op) {
     var endType = psName == lastPSName  ?  ''   :
               /^ym\d\d12$/.test(psName) ?  'y1' :
       /^ym\d\d(03|06|09)$/.test(psName) ?  'm3' :
-              /^y1|m1|w1$/.test(psName) ?  'm3' :
+                 /^m2|w2$/.test(psName) ?  'm3' :
                            factor === 0 ?  'x'  :  '';
     return !endType ?  [] :  [ pSumTypesToBorders[endType] ];
   }
@@ -1131,7 +1131,8 @@ function preprocessCalcs(opt, datas, f) {
   // 5) Add extra pSum columns, if the period shown on the map has enough data.
   [ [ 'm6', 'pf-6M', 'performance in past 6 months', 'performance 6m',  '1Y' ],
     [ 'm2', 'pf-2M', 'performance in past 2 months', 'performance 2m',  '3M' ],
-    [ 'w2', 'pf-2W', 'performance in past 2 weeks' , 'performance 2w',  '1M' ],
+    [ 'w3', 'pf-3W', 'performance in past 3 weeks' , 'performance 3w',  '1M' ],
+    [ 'w2', 'pf-2W', 'performance in past 2 weeks' , 'performance 2w',  '3W' ],
     [ 'd3', 'pf-3D', 'performance in past 3 days'  , 'performance 3d',  '1W' ],
     [ 'd1', 'pf-1D', 'performance in past day'     , 'performance 1d',  '3D' ],
   ] .forEach(a => {
@@ -1296,6 +1297,7 @@ function processColCalcs(opt, datas, f) {
     else if (psName=='m3')  fac = pSumFromTo(facs, iA_ago3M ,  days.length);
     else if (psName=='m2')  fac = pSumFromTo(facs, iA_ago2M ,  days.length);
     else if (psName=='m1')  fac = pSumFromTo(facs, iA_ago1M ,  days.length);
+    else if (psName=='w3')  fac = pSumFromTo(facs, days.length-21, days.length);
     else if (psName=='w2')  fac = pSumFromTo(facs, days.length-14, days.length);
     else if (psName=='w1')  fac = pSumFromTo(facs, days.length -7, days.length);
     else if (psName=='d3')  fac = pSumFromTo(facs, days.length -3, days.length);
