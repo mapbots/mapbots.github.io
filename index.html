@@ -12,6 +12,7 @@ a, a:visited  { color: #228; }
 #msg { min-height: 22px;  margin: 10px 0 0 0; }
 button, #msg, #optHead, #optTA { font-family: consolas, courier, monospace;
                          font-size: 11px;  line-height: 13px;  color: #222; }
+#calculating { font-size: 12px;  background-color: #fdfdfd; }
 #optHead { margin: 0 0 0 0; }
 #optTA { box-sizing: border-box;  padding: 1px;  border: 1px solid #eee;
          white-space: pre-wrap;  outline: none;  overflow-wrap: break-word; }
@@ -67,6 +68,7 @@ const userOptDefault = {
 
   dayMinus1: true,  // In performance-col headers: show tag of day During which
                     // a perf. was made (:true), or Measured-at00:00UTC (:false).
+  napMonthBug: false, // Simulate NapBots-PATool day-shift bug for month-reports?
   nameFS:   10.5,  nameW: 28,  nameTY: 3, // Name-cell fontsize/width/textOffset.
   headFS:    6,    headH: 22,  headTX: 1,    // All font-sizes are relative to a..
   pSumFS:    9.25, pSumW: 24,  pSumTX: 3.5,  // ..6x8-sized day-performance cell.
@@ -117,7 +119,7 @@ const userOptDefault = {
 const dataURL = ///'https://mapbots.github.io/data/strats.json' ||
                 'https://raw.githubusercontent.com/mapbots/data/main/strats.json';
 
-const mapURL = ///`${ window.location }`.replace(/^(.+?)\?.*$/, '$1') ||
+const mapURL = ///`${ window.location||'' }`.replace(/^(.+?)\?.*$/, '$1') ||
                'https://mapbots.github.io';
 
 const repoURL = 'https://github.com/mapbots/mapbots.github.io';
@@ -275,21 +277,35 @@ const exampleOpts = [
     colorScheme: 1,
     factorHigh:  factorHighDefault.d1,
     infoW:     178,
-    nameW:      30,
+    nameW:      37,
     calcs: [
+      "name_pipebear  rhin9  hors9  deer23 pand14 lama9  peli9  flam9  hipp9  coli9   lev1.0",
+      "name_pipebull  rhin10 hors10 deer15 pand15 lama10 peli10 flam10 hipp10 coli10  lev1.2",
+      "name_pipeextr  rhin8  hors8  deer27 pand17 lama8  peli8  flam8  hipp8  coli8   lev0.5",
+      ///{ "name": "pipebear", "func": "_ => lev(1.0, 0.09*rhin+ 0.09*hors+ 0.23*deer+ 0.14*pand+ 0.09*lama+ 0.09*peli+ 0.09*flam+ 0.09*hipp+ 0.09*coli)" },
+      ///{ "name": "pipebull", "func": "_ => lev(1.2, 0.10*rhin+ 0.10*hors+ 0.15*deer+ 0.15*pand+ 0.10*lama+ 0.10*peli+ 0.10*flam+ 0.10*hipp+ 0.10*coli)" },
+      ///{ "name": "pipeextr", "func": "_ => lev(0.5, 0.08*rhin+ 0.08*hors+ 0.27*deer+ 0.17*pand+ 0.08*lama+ 0.08*peli+ 0.08*flam+ 0.08*hipp+ 0.08*coli)" },
+      0,
       { name: 'beast1',  descr: 'lion10 tige10 cat20 rhin30 hors30 lev1.5',
         func: _ => lev(1.5,  lion*.10 +tige*.10 +cat *.20 +rhin*.30 +hors*.30) },
       { name: 'beast2',  descr: 'tige20 cat20 rhin20 hors20 peli20 lev1.5',
         func: _ => lev(1.5,  tige*.20 +cat *.20 +rhin*.20 +hors*.20 +peli*.20) },
       { name: 'beast3',  descr: 'tige20 cat20 rhin10 hors30 peli20 lev1.5',
         func: _ => lev(1.5,  tige*.20 +cat *.20 +rhin*.10 +hors*.30 +peli*.20) },
+      ///'name_beastC  lev1.5  tige20 cat20 rhin10 hors30 peli20',
+      0,
+      0,
+      "name_pipebear7d pipebear ema7",
+      "name_pipebull7d pipebull ema7",
+      "name_pipeextr7d pipeextr ema7",
       0,
       { name: 'beast1d7', descr: 'beast1, 7-day-ema',
-        func:  _ => beast1_wprod(7) ,  factorHigh: 1.2,  pSums: 0 },
+        func:  _ => beast1_wprod(7) , factorHigh:factorHighDefault.ema, pSums:0},
       { name: 'beast2d7', descr: 'beast2, 7-day-ema',
-        func:  _ => beast2_wprod(7) ,  factorHigh: 1.2,  pSums: 0 },
+        func:  _ => beast2_wprod(7) , factorHigh:factorHighDefault.ema, pSums:0},
       { name: 'beast3d7', descr: 'beast3, 7-day-ema',
-        func: '_ => beast3_wprod(7)',  factorHigh: 1.2,  pSums: 0 },
+        func: '_ => beast3_wprod(7)', factorHigh:factorHighDefault.ema, pSums:0},
+      ///'name_beastCd7  beastC  ema7',
     ],
   },
 
@@ -304,7 +320,7 @@ const exampleOpts = [
     factorHigh:  { ema: factorHighDefault.ema },
   },
 
-  { ...clone(userOptDefault),  // Add all userOptDefault properties.
+  { ...clone(userOptDefault),  // Example with all userOptDefault's properties.
     fromDay:    204,  // Shorthand for 200401.
     cellSize:     4,
     infoCalcFS:   9,
@@ -315,11 +331,12 @@ const exampleOpts = [
     calcs: [
       'hors50 peli50 spread 50 step 5 lev1.5 cond "hors != peli"',
       0,
-      { name: 'pack15'   ,  descr: 'pack lev1.5',
+      'name_pack05  pack  lev0.5',
+      { name: 'pack15'   ,  descr: 'pack100 lev1.5',
         func: _ => lev(1.5, pack) },
-      { name: 'pack15d7e',  descr: 'pack lev1.5, 7-day exp-moving-avg',
+      { name: 'pack15d7e',  descr: 'pack100 lev1.5, 7-day exp-moving-average',
         func: _ => pack15_wprod(7),  pSums: 0 },
-      { name: 'pack15d7p',  descr: 'pack lev1.5, 7-day moving-avg',
+      { name: 'pack15d7p',  descr: 'pack100 lev1.5, 7-day moving-average',
         func: _ => pack15_prod(7) ,  pSums: 0 },
       0,
       { name: 'beast1',  descr: 'lion10 tige10 cat20 rhin30 hors30 lev1.3',
@@ -454,6 +471,7 @@ function extendOpt(op) {
     var endType = psName == lastPSName  ?  ''   :
               /^ym\d\d12$/.test(psName) ?  'y1' :
       /^ym\d\d(03|06|09)$/.test(psName) ?  'm3' :
+              /^y1|m1|w1$/.test(psName) ?  'm3' :
                            factor === 0 ?  'x'  :  '';
     return !endType ?  [] :  [ pSumTypesToBorders[endType] ];
   }
@@ -468,6 +486,7 @@ function extendOpt(op) {
     repoURL:    repoURL,
     fromDay:    day,
     dayMinus1:  op.dayMinus1===undefined ?  true :  op.dayMinus1,
+    napMonthBug:op.napMonthBug,
 
     factorHigh: factorHigh,
     rgbLow:     rgb.low,
@@ -704,17 +723,31 @@ function prepDatas(opt, data) {
 
 
 /**
- * Converts an alloc/etc-specification string into an Array of Objects, like:
- *   'cat40 XY lev1.5'  =>  [{s:'cat',n:40}, {s:'xy',n:''}, {s:'lev',n:1.5}].
+ * Converts an alloc/etc-specification string into an Object, like:
+ *   'cat40 XY lev 1.5 dog50,60 , 5  a_a "kl m"  a_40  '
+ *   =>  { cat: 40           ,
+ *         xy : ''           ,
+ *         lev: 1.5          ,
+ *         dog: [ 50, 60, 5 ],
+ *         a_a: 'kl m'       ,
+ *         a_40: ''           }
  */
-function splitSpecString(str) {
-  return ((str || '')
-    .toLowerCase()
-    .match(/\b[a-z]+\s*(?:\d+(?:\.\d*)?|\.\d+)?\b/g)      //   => ['cat40', ...]
-    || [])
-    .map(s => s.match(/^([a-z]+)\s*(.*)$/).slice(1,3))    // [['cat','40'], ...]
-    .map(p => ({ s: p[0],                             // [{s:'cat',n:'40'}, ...]
-                 n: p[1]==='' ? p[1] : +p[1] }));
+function splitSpecString(str, parseLists = true) {
+  var key   = '(?<k>[a-z]+(_[_a-z0-9]*)?)';
+  var item  = '(\\d+(\\.\\d*)?|\\.\\d+|".*?")';
+  var sep   = '\\s*,\\s*';
+  var items = `(?<v>${ item }(${ sep }${ item })*)`;
+  var reAll = new RegExp(`${ key }\\s*${ items }?`, 'g');
+  var reSep = new RegExp(sep);
+  var parseItem = s => !s                ?  '' :
+                       s.startsWith('"') ?  s.slice(1, -1) :  +s;
+
+  return [...(str||'').toLowerCase().matchAll(reAll)]
+    .map(o => o.groups)
+    .reduce((o, {k, v}) => (
+      o[k] = parseLists && v && v.includes(',') ?
+               v.split(reSep).map(parseItem)  :  parseItem(v),
+      o), {});
 }
 
 
@@ -741,8 +774,7 @@ function allbotsSpecToCalcs(str, opt, datas, f) {
 
   if (!/^\s*allbots\b/i.test(str))  return false;
 
-  var { lev, ema, emaw } = splitSpecString(str)
-                          .reduce((o, {s, n}) => (o[s] = n, o),  {});
+  var { lev, ema, emaw } = splitSpecString(str);
   var emawN = 0&& emaw;  // (Disabled for now: Add EMA-weight in the calc name).
 
   return !(lev || ema) ?  false :
@@ -774,15 +806,22 @@ function allbotsSpecToCalcs(str, opt, datas, f) {
 /**
  *
  */
-function multiAllocSpecToCalcs(str, allocNr, datas) {
-  var arr = expandMultiAllocSpec(str);
-  if (arr.length == 0)  arr = [ str ];
+function multiAllocSpecToCalcs(str, allocNr, opt, allNames) {
+  try        { var arr = expandMultiAllocSpec(str, allNames); }
+  catch(err) { throw `${ err } in '${ str }'` }
+
   if (arr.length > 50) {  // Show info-msg in console when generating many calcs.
     console.log(`Info: ${ arr.length } combinations for '${ str }'`);
   }
   var one = arr.length == 1;
   var nrF = i => one ?  allocNr :  `${ allocNr }i${ i + 1 }`;
-  return arr.map((s, i) =>  allocSpecToCalc(s, nrF(i), datas, one?1:2));
+  return arr.map((s, i) =>  {
+    let calc = allocSpecToCalc(s,  nrF(i),  opt,  allNames,  one? 1: 2);
+    if (calc.error) {
+      throw `${ calc.error } in '${ s }'`;
+    }
+    return calc;
+  });
 }
 
 
@@ -790,33 +829,51 @@ function multiAllocSpecToCalcs(str, allocNr, datas) {
 
 /**
  * Given a shorthand allocation-specification string like:
- *   'cat40 hors60 lev1.5 slip.05',
+ *   'cat40 hors60 lev1.5 slip.05  name_test1',
  * returns a calc-Object.
  * Note: bot-allocation and slippage numbers are interpreted as percentages,
  * so the above will generate the calc-function:
  *   () => slip(0.0005, lev(1.5, cat*0.40 + hors*0.60)) .
  */
-function allocSpecToCalc(str, allocNr, datas, padStartDescr = 0) {
-  var { botNames } = datas;
-
+function allocSpecToCalc(str, allocNr, opt, allNames, padStartDescr = 0) {
   var lev   = false;
   var slip  = false;
+  var ema   = false;
+  var emaw  = false;
   var func  = '';
+  var name  = '';
   var descr = '';
+  var dscU  = '';
+  var error = '';
+  var countRefs = 0;
+
   try {
-    splitSpecString(str)  // => E.g. [{s:'cat',n:40}, ...].
-      .forEach(({s, n}) => {
-        if      (s == 'lev' )  lev  = n;
-        else if (s == 'slip')  slip = n;
-        else if (botNames.includes(s)) {
-          if (n==='')  n = 100;
-          func  += `${ func .length ? ' + ' : '' }${ s }*${ fixed2(n / 100) }`;
-          descr += `${ descr.length ? ' '   : '' }${ s }${
-                       Math.round(n).toString().padStart(padStartDescr,'0') }`;
-        }
-      });
+    var o = splitSpecString(str, false);
+
+    if (o.ema   &&  o.ema  > 1                )  ema  = o.ema ;
+    if (o.emaw  &&  o.emaw != emaWeightDefault)  emaw = o.emaw;
+    var emaArg = !ema ?  '' :  `${ ema }${ emaw ?  `,${emaw}` :  '' }`;
+
+    Object.entries(o).forEach(([s, n]) => {         // => E.g. [['cat',40],...].
+      if      (s == 'lev' )  lev  = n;
+      else if (s == 'slip')  slip = n;
+      else if (/^emaw?$/.test(s)) ;
+      else if (s.startsWith('name_' ))  name = s.substr(5);
+      else if (s.startsWith('descr_'))  dscU = s.substr(6).replace(/_/g, ' ');
+      else if (allNames.includes(s)) {
+        countRefs++;
+        if (n === '')  n = 100;
+        let numFunc  = emaArg ?  `_wprod(${ emaArg })` : `*${ fixed2(n / 100) }`;
+        let numDescr = emaArg ?  ` ema${    emaArg }` :
+                       Math.round(n).toString().padStart(padStartDescr,'0');
+        func  += `${ func .length ? ' + ' : '' }${ s }${ numFunc  }`;
+        descr += `${ descr.length ? ' '   : '' }${ s }${ numDescr }`;
+      }
+      else throw botCalcNameError(s, allNames);
+    });
+    if (ema && countRefs != 1)  throw `'ema' should be based on single bot/calc`;
   }
-  catch(err) { func = '0' }
+  catch(err) { error = err;  func = '0'; }
 
   if (lev ) {
     func   =   `lev(${ fixed2(lev)              }, ${ func })`;
@@ -828,9 +885,14 @@ function allocSpecToCalc(str, allocNr, datas, padStartDescr = 0) {
   }
 
   return {
-    name : `alloc${ allocNr }`,  ///descr.replace(/\s|\./g, ''),
-    descr: descr,
+    name : name || `alloc${ allocNr }`,  ///descr.replace(/\s|\./g, ''),
+    descr: dscU || descr,
     func : wrapStrInFunc(func),
+    ...(error && { error }),
+    ...(ema && {
+      factorHigh: opt.factorHigh.ema,
+      pSums:      false,
+    })
   };
 }
 
@@ -851,61 +913,66 @@ function allocSpecToCalc(str, allocNr, datas, padStartDescr = 0) {
  *  and
  *  [ 'hors50 rhin50',  'hors50 rhin50 lev1.2',  'hors50 rhin50 lev1.5' ].
  */
-function expandMultiAllocSpec(str) {
+function expandMultiAllocSpec(str, allNames) {
   var s = str;
   if (typeof s != 'string'  ||  s.trim() === '')  return [ str ];
 
   // 1.Split individual parts into optional key-value properties, including:
   //   obj.lev    = number or Array of numbers (from comma-separated string).
   //   obj.slip   = number or Array of numbers ( " ).
+  //   obj.ema    =  ( " ) .
+  //   obj.emaw   =  ( " ) .
   //   obj.[bot*] = number or Array of numbers ( " ) like: [min, max, step].
   //   obj.spread = number             } (Will be overriden for a..
   //   obj.step   = number (default:1) }  ..[bot*] that is a list).
-  //   obj.cond   = Function: extra condition for an alloc to be included
-  //                (in addition to `bots-sum==100`). Function-args: an
-  //                alloc single-Object (e.g. `{ lion:40, cat:60 }`).
+  //   obj.cond   = Function (given as String): extra condition for an alloc to
+  //                be included (in addition to `bots-sum==100`). Function-args:
+  //                a single alloc Object (e.g. `{ lion:40, cat:60 }`).
   // Example: 'lion30 tige30 cat40  lev 1,1.3,1.5  cond "lion+tige==60"'
   //      => { lion:30, tige:30, cat:40,  lev: [1, 1.3, 1.5],
   //           cond: o => o.lion+o.tige==60 } .
-  var [_, $1, cond, $3] = s.match(/(^|^.*?\s)cond\s*"(.*)"(.*)$/) || [];
-  if (cond) {
-    s = $1 + $3;
-    cond = 'o=>' + cond.replace(/([a-z]+)/gi, 'o.$1');
-  }
+  var obj = splitSpecString(s);
+  var isMulti = false;
 
-  s = '{' +
-      s .replace(/([a-z]+)\s*([\d.]+(,\s*[\d.]+)*)/g, '"$1":$2,')
-        .replace(           /([\d.]+(,\s*[\d.]+)+)/g, '[$1]')
-        .replace(/,\s*$/, '') + '}';
-
-  try {
-    var obj = JSON.parse(s);
-    if (cond)  obj.cond = eval(cond);
-  }
-  catch(e) {
-    return [ str ];
+  if (obj.cond) {
+    obj.cond = eval('o=>' + obj.cond.replace(/([a-z]+)/g, 'o.$1'));
+    isMulti  = true;
   }
 
 
-  // 2.Derive an `obj` where each botName, lev, and slip are arrays of values.
-  // + Turn the given lev and slip into (or keep them as) lists of values.
-  // + Turn any botName-value into an Array of numbers:
+  // 2.
+  // + Convert (or keep) lev and slip into (levs/slips:) an Array of numbers.
+  // + Convert (or keep) _each_ botName-value into an Array of numbers.
   //   - if value is a number, then based on `spread` (0 if absent) and `step`,
   //   - if value is a string-list ('min,max'/'min,max,step') then based on that.
   //   Example: 'cat20 spread10 step 5 ...' and
   //            'cat10,30,5 ...'            both generate:
-  //        =>  { cat: [10, 15, 20, 25, 30],  ... } .
-  var { lev, slip, spread, step, cond, ...alloc } = obj;
+  //        =>  `alloc = { cat: [10, 15, 20, 25, 30],  ... }`.
+  var { lev, slip, spread, step, cond, ema, emaw, ...alloc } = obj;
 
-  spread = Math.max(spread, 0) || 0;
-  step   = Math.max(step,   1) || 1;
+  var emaOrig = ema;
+  var wD      = emaWeightDefault;
+  if (emaw  &&  !ema)  throw `'emaw' without 'ema'`;
+
+  spread =          Math.max(spread, 0)          || 0;
+  step   = Math.min(Math.max(step,   1), spread) || 1;
+  ema    = ema  || 1;
+  emaw   = emaw || wD;
+  var countRefs = 0;
+
   for (let key in alloc) {
-    let val = alloc[key];
+    if (key.startsWith('name_' )) { var name  = key; delete alloc[key]; continue }
+    if (key.startsWith('descr_')) { var descr = key; delete alloc[key]; continue }
+    if (!allNames.includes(key))  throw botCalcNameError(key, allNames);
+    countRefs++;
+
+    let val = alloc[key] !== '' ?  alloc[key] :  100;
     let arr = alloc[key] = [];
     if (val.length) {
       var a = val[0]!==undefined ?  val[0] :  0;
       var z = val[1]!==undefined ?  val[1] :  (val[0]!==undefined ? a : 100);
       var s = val[2]!==undefined ?  val[2] :  step;
+      if (a > z)  { let tmp = a;  a = z;  z = tmp; }
     }
     else if (spread > 0) {
       a = Math.max(0, val - spread     );
@@ -916,23 +983,32 @@ function expandMultiAllocSpec(str) {
       a = z = val;
     }
     for (let i = a;  i <= z;  i += s)  arr.push(i);
+    if (arr.length > 1)  isMulti = true;
   }
 
-  lev  = !lev  ?  [1] :  !lev.length  ?  [lev]  :  lev;
-  slip = !slip ?  [0] :  !slip.length ?  [slip] :  slip;
+  if (emaOrig && countRefs!=1)  throw `'ema' should be based on single bot/calc`;
 
-  obj = { ...alloc,  lev,  slip, ...(cond && { cond }) };
+  var levs  = !lev  ?  [1] :  !lev.length  ?  [lev]  :  lev;
+  var slips = !slip ?  [0] :  !slip.length ?  [slip] :  slip;
+  var emas  = !ema  ?  [1] :  !ema.length  ?  [ema]  :  ema;
+  var emaws = !emaw ?  [wD]:  !emaw.length ?  [emaw] :  emaw;
+
+  if (levs.length > 1  ||  slips.length > 1  ||
+      emas.length > 1  ||  emaws.length > 1    )  isMulti = true;
 
 
   // 3.Generate all combinations of botName values that form a total of 100
   //   and that satisfy `obj.cond` (if any); and for all their levs and slips.
   const shouldTotal100 = true;
-  var { lev: levs,  slip: slips,  cond,  ...alloc } = obj;
   var arr = [];
 
   for (var lev of levs) {
     for (var slip of slips) {
-      decombinatorialize({}, Object.keys(alloc));
+      for (var ema of emas) {
+        for (var emaw of emaws) {
+          decombinatorialize({}, Object.keys(alloc));
+        }
+      }
     }
   }
 
@@ -944,9 +1020,23 @@ function expandMultiAllocSpec(str) {
     else {
       let sum = Object.keys(alc).reduce((sum, k) => sum + alc[k], 0);
       if ((!shouldTotal100 || sum == 100)  &&  (!cond || cond(alc))) {
-        arr.push({ ...alc, ...(lev!=1&&{lev}), ...(slip&&{slip}) });
+        arr.push({ ...alc,
+                   ...(lev != 1 && { lev  }),
+                   ...(slip     && { slip }),
+                   ...(ema != 1 && { ema  }),
+                   ...(emaw!=wD && { emaw }),
+                   ...(name     && { [!isMulti ?  name :
+                                      `${ name }${ /[0-9]$/.test(name) ? 'i' : ''
+                                      }${ arr.length + 1 }`]: '' }),
+                   ...(descr    && { [!isMulti ?  descr :
+                                      `${ descr}_${ arr.length + 1 }`]: '' }) });
       }
     }
+  }
+
+  if (shouldTotal100  &&  !arr.length) {
+    throw (isMulti ?  'No combination has' :  'Allocation does not have') +
+          ` total of 100%`;
   }
 
 
@@ -954,6 +1044,17 @@ function expandMultiAllocSpec(str) {
   arr = arr.map(o => Object.keys(o) .map(k => k + o[k]) .join(' '));
 
   return arr;
+}
+
+
+
+/**
+ */
+function botCalcNameError(key, allNames) {
+  var key4 = key.substr(0, 4);
+  return `Unknown key '${ key }'` +
+         (key.length > 4  &&  allNames.includes(key4) ?  // Help for bot abbrevs.
+           ` (did you mean '${ key4 }'?)`             :  '');
 }
 
 
@@ -966,13 +1067,20 @@ function preprocessCalcs(opt, datas, f) {
   var { botNames, bots, calcs, days, factors, cSums } = datas;
 
 
-  // 1) Replace calc shorthand-strings by calc objects with functions.
-  var allocNr = 0;
-  calcs = calcs.reduce((arr, calc) =>
-    arr.concat( typeof calc == 'string'  &&  calc  &&
-                ( allbotsSpecToCalcs(calc, opt, datas, f) ||
-                  multiAllocSpecToCalcs(calc, ++allocNr, datas) )  || calc),
-    []);
+  // 1) Replace calc shorthand-strings by calc objects that have a function.
+  var allocNr  = 0;
+  var allNames = [ ...botNames ];
+  var calcs2   = [];
+  for (let calc of calcs) {
+    let arr =  typeof calc == 'string'  &&  calc  &&
+               ( allbotsSpecToCalcs(calc, opt, datas, f) ||
+                 multiAllocSpecToCalcs(calc, ++allocNr, opt, allNames) )  ||
+               [ { ...calc } ]  // Clone user-given calc-Objs from shallowly,..
+                                // ..as they may have an uncloneable Function.
+    for (let e of arr)  e.name  &&  allNames.push(e.name);
+    calcs2 = calcs2.concat(arr);
+  }
+  calcs = calcs2;
 
 
   // 2) Replace empty calcs by a separator.
@@ -990,6 +1098,10 @@ function preprocessCalcs(opt, datas, f) {
     else {
       if ( calc.name)  calc.name = calc.name.replace(/^\d+|[^a-z0-9_$]/gi,'');
       if (!calc.name)  calc.name = `calc${ +i + 1 }`;
+      if (!calc.descr) {
+        calc.descr = calc.func.toString()
+          .replace(/^\s*[a-z_]+\s*=>\s*/i, '') .replace(/\s+/g, '');
+      }
       while ([...calcNames, ...botNames,
               'calcs', 'botNames', 'bots', 'days', 'factors',
               'c', 'o', 'allNames', 'calc', 'func', 'name',
@@ -1015,6 +1127,18 @@ function preprocessCalcs(opt, datas, f) {
                      descr: 'performance in 20'+s,  descrMini: 'perf 20'+s });
   });
 
+
+  // 5) Add extra pSum columns, if the period shown on the map has enough data.
+  [ [ 'm6', 'pf-6M', 'performance in past 6 months', 'performance 6m',  '1Y' ],
+    [ 'm2', 'pf-2M', 'performance in past 2 months', 'performance 2m',  '3M' ],
+    [ 'w2', 'pf-2W', 'performance in past 2 weeks' , 'performance 2w',  '1M' ],
+    [ 'd3', 'pf-3D', 'performance in past 3 days'  , 'performance 3d',  '1W' ],
+    [ 'd1', 'pf-1D', 'performance in past day'     , 'performance 1d',  '3D' ],
+  ] .forEach(a => {
+    let obj = { name: a[0],  head: a[1],  descr: a[2],  descrMini: a[3] };
+    let insertAt = opt.pSums.findIndex(o => o.head == `pf-${ a[4] }`) + 1;
+    opt.pSums.splice(insertAt, 0, obj);
+  });
 
   Object.assign(datas, { calcs, pSumYMs, cSums });
 }
@@ -1129,7 +1253,9 @@ function processRowCalcs(opt, datas, f) {
 function processColCalcs(opt, datas, f) {
   var { bots, days, calcs, factors } = datas;
   var iA_ago12M = indexLastDayTagMinusXMonthsPlus1D(12);
+  var iA_ago6M  = indexLastDayTagMinusXMonthsPlus1D( 6);
   var iA_ago3M  = indexLastDayTagMinusXMonthsPlus1D( 3);
+  var iA_ago2M  = indexLastDayTagMinusXMonthsPlus1D( 2);
   var iA_ago1M  = indexLastDayTagMinusXMonthsPlus1D( 1);
   var psNames = opt.pSums.map(o => o.name);
 
@@ -1166,14 +1292,22 @@ function processColCalcs(opt, datas, f) {
 
     if      (psName=='v' )  fac = pSumFromTo(facs,         0,  days.length,  1);
     else if (psName=='y1')  fac = pSumFromTo(facs, iA_ago12M,  days.length);
+    else if (psName=='m6')  fac = pSumFromTo(facs, iA_ago6M ,  days.length);
     else if (psName=='m3')  fac = pSumFromTo(facs, iA_ago3M ,  days.length);
+    else if (psName=='m2')  fac = pSumFromTo(facs, iA_ago2M ,  days.length);
     else if (psName=='m1')  fac = pSumFromTo(facs, iA_ago1M ,  days.length);
+    else if (psName=='w2')  fac = pSumFromTo(facs, days.length-14, days.length);
     else if (psName=='w1')  fac = pSumFromTo(facs, days.length -7, days.length);
+    else if (psName=='d3')  fac = pSumFromTo(facs, days.length -3, days.length);
+    else if (psName=='d1')  fac = pSumFromTo(facs, days.length -1, days.length);
     else if (/^ym\d{4}$/.test(psName)) {
       let yymm = psName.slice(2);  // Note: perf. of day 1 of month is measured..
       let iA = days.findIndex(d => d == yymm + '02');  //..<–at 00:00UTC of day2.
       let iZ = iA + days.slice(iA + 1).findIndex(d => `${d}`.endsWith('02')) + 1;
       if (iZ <= iA)  iZ = days.length;  // For if next month's day 2 isn't found.
+      if (opt.napMonthBug) {  // This may simulate what NapBots-v1's Performance..
+        iA -= 2;  iZ -= 2;    // ..Allocation tool seems to be using here.
+      }
       fac = pSumFromTo(facs, iA, iZ);
     }
     else if (psName == 'dd'  )  fac = ddSinceXDaysAgo(facs, 365);
@@ -1187,7 +1321,7 @@ function processColCalcs(opt, datas, f) {
 
   function pSumFromTo(facs, iA, iZ, factorIfZero = 0) {
     // Arg `iA`: index of first day to include, < 0 if absent.
-    // Arg `iZ`: index after last day to include.
+    // Arg `iZ`: index _after_ last day to include.
     // If asked to calculate from before fromDay, it will make a 'no-data' cell.
     // If some factors (e.g. earliest data) are no-data (falsy), it treats them:
     //   by default: as no-data, resulting in a no-data answer (=0), or
@@ -1325,8 +1459,8 @@ function makeConf(opt, datas, funcs) {
     }),
     info_calc: o => _(cell.infoCalc, {
       text:      calcs[o.r].descr,
-      ...(calcs[o.r].name.startsWith('alloc') && {  // Alloc descrs can be long,..
-        tooltip: calcs[o.r].descr,        // ..so make them readable via tooltip.
+      ...(calcs[o.r].descr.length > 20 && {  // Alloc descrs can be long, so..
+        tooltip: calcs[o.r].descr,           // ..make them readable via tooltip.
       })
     }),
 
@@ -1646,7 +1780,9 @@ function codeForHTML(conf) {
 
 
 /**
- *
+ * This is the main function for map building.
+ * It initializes options, downloads and processes data, and draws and shows
+ * the results as an SVG image.
  */
 async function makeMap(userOpt) {
   keepData  = null;
@@ -1659,9 +1795,9 @@ async function makeMap(userOpt) {
 
   preprocessCalcs(opt, datas, funcs);       // Prepare for calculating.
   processRowCalcs(opt, datas);              // Calculate derived data rows.
-  processColCalcs(opt, datas, funcs);       // Calculate their summary-columns.
+  processColCalcs(opt, datas, funcs);       // Calculate rows' summary-columns.
 
-  keepData = Object.keys(datas).reduce( // For pot. reuse by 'Download JSON'.
+  keepData = Object.keys(datas).reduce(     // For pot. reuse by 'Download JSON'.
     (o, k) => (['version','bots','calcs','days','factors'].includes(k)  &&
                (o[k] = datas[k]),  o),  {});
 
@@ -1701,7 +1837,7 @@ function getOptFromInput() {  // Returns the Object, or false on error.
 
 
 function initNavigation(opt) {
-  window.history.replaceState(opt, '', window.location);
+  try { window.history.replaceState(opt,'',permalinkForOpt(opt)) }  catch (e) {}
   window.onpopstate = function(event) {
     opt = event.state;
     putOptIntoInput(opt);
@@ -1710,11 +1846,11 @@ function initNavigation(opt) {
 }
 
 
-function applyOpt(opt) {
+async function applyOpt(opt) {
   opt = opt || getOptFromInput();
   if (opt === false)  return;
-  goMakeMap(opt);
-  window.history.pushState(opt, '', permalinkForOpt(opt));
+  await goMakeMap(opt);
+  try { window.history.pushState(opt, '', permalinkForOpt(opt)) }  catch (e) {}
 }
 
 
@@ -1737,7 +1873,7 @@ function addExamplePermalinks() {
     ` onclick="return applyExampleOpt(${ i })"` +
     (i == -1 ?  ' title="(Ctrl+Shift+Enter)"' :  '') +
     `>` +
-    (i == -1 ?  'reset' :  `${ !i ? 'Example options ' : '' }${ i + 1 }`) +
+    (i == -1 ?  'Reset' :  `${ !i ? 'Example options ' : '' }${ i + 1 }`) +
     `</a>`;
   exampleOpts.forEach(addLink);
   addLink({}, -1);  // Add link to reset to default options.
@@ -1817,7 +1953,11 @@ function loadOptFromURL() {
 
 
 function showMsg(type, msg, where = 3) {  // `where`= 1:console, 2:html, 3:both.
-  if (   where%2  && msg)  console.log((type ?  `${type}: ` :  '')  +  msg);
+  msg = !msg ?  '' :  msg.toString();
+  if (   where%2  && msg) {
+    console.log((type ?  `${type}: ` :  '') +
+                msg .replace(/<.*?>/g, '') .replace(/\.{3}$/, ''));
+  }
   if (~~(where/2)) {
     if (type == 'Done') {
       if ($('msg').innerHTML.replace(/<br>\n?/gi, '\n').trim() == msg.trim()) {
@@ -1852,6 +1992,7 @@ function addKeyboardListeners() {
   document.addEventListener('keydown', scLR);
   document.addEventListener('keyup'  , scLR);
   function scLR(ev) {
+    if (ev.shiftKey ||  ev.altKey)  return;
     if (ev.ctrlKey  &&  ev.key == 'Home' )  return act(ev, scrollLR, -1);
     if (ev.ctrlKey  &&  ev.key == 'End'  )  return act(ev, scrollLR,  1);
   }
@@ -1872,7 +2013,9 @@ function addKeyboardListeners() {
     if (!ev.shiftKey  &&  ev.key == 'Tab')  return act(ev, () => {
       var start  = this.selectionStart;
       var end    = this.selectionEnd;
-      this.value = this.value.substr(0, start) + ''.padStart(tabSize) +
+      this.value = this.value.substr(0, start) +
+                   this.value.substring(start, end)
+                     .replace(/(?<=^|\n)(?=.)|^$/g, ''.padStart(tabSize))+
                    this.value.substr(end);
       this.selectionStart = this.selectionEnd = start + tabSize;
     });
@@ -1882,24 +2025,29 @@ function addKeyboardListeners() {
 
 
 async function goMakeMap(userOpt, loadedFromURL = false) {
-  if (loadedFromURL) {  // Don't autoexecute if calcs given via URL contain code.
+  if (loadedFromURL) {  // Don't autoexecute if URL-given calcs contain code.
     for (calc of userOpt.calcs || []) {
       if (typeof calc == 'object'  &&  calc.func  ||
           typeof calc == 'string'  &&  calc.includes('cond')) {
         $('svgCont').innerHTML = '';
         showMsg('Info', 'The options from the URL contain executable code.\n' +
                         'Please check below and <b>click Apply ' +
-                        '(Ctrl+Enter)</b> if you trust it.');
+                        '(Ctrl+Enter)</b> if it looks OK.');
         $('applyOpt').focus();  // Focus Apply so you can also just press Enter.
         return;
       }
     }
   }
 
-  const msg = 'Calculating...';
+  const msg = '<span id="calculating">Calculating...</span>';
   showMsg('Info', msg);
-  await makeMap(userOpt);
-  showMsg('Done', msg);
+  try {
+    await makeMap(userOpt);
+    showMsg('Done', msg);
+  }
+  catch(err) {
+    showMsg('Error', err);
+  }
 }
 
 
