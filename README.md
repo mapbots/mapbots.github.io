@@ -78,7 +78,7 @@ Among the many customization options (incl. sizes, colors, ordering),
 
 - Other features: creating permalinks, downloading as image, copying TSV data
   (click on column headers), hotkeys, etc. You will find it all on the map.
-  For more info, check comments in the [source code](src/index.html).
+  For more info, check comments in the [source code](index.html).
 
 
 ## About
