@@ -199,7 +199,7 @@ const rgbEmpty = '#f4f4f4';  // For 'no data' cells.
 
 const factorHighDefault = {  // Default values for factorHighs, per timespan.
   d1: 1.1,   d3: 1.1,
-  w1: 1.3,   w2: 1.35,  w3: 1.45,
+  w1: 1.35,  w2: 1.35,  w3: 1.35,
   m1: 1.55,  m2: 1.55,  ym: 1.55,
   m3: 1.75,  m6: 2,
   y1: 6,     y2: 12,    y3: 24,
@@ -222,7 +222,9 @@ const pSumTypesToBorders =  // Reuse day-cell y1/m3/x borders (not m1) & adjust.
         { ...perfDayTypesToBorders[k   ],
           w: perfDayTypesToBorders[k   ].w / 4 },  o),
   { va: { ...perfDayTypesToBorders['m3'],  // For variable timespan separators,..
-          w: perfDayTypesToBorders['m3'].w / 4 * 1.2 },  // ..e.g. pf-2m|pf-1m.
+          w: perfDayTypesToBorders['m3'].w / 4 * 1.2 },  // ..e.g. after 'pf-1m'.
+    vb: { ...perfDayTypesToBorders['m1'],
+          w: perfDayTypesToBorders['m1'].w / 4 * 1.05 },
   });
 
 
@@ -481,13 +483,14 @@ function extendOpt(op) {
     return !endType ?  [] :  [ perfDayTypesToBorders[endType] ];
   }
 
-  // Returns the borders that should be drawn for a 'ymYYMM' perf-summary cell.
-  var yymmBorders = (pSumYMs, psName, factor, opt) => {
+  // Returns the borders that should be drawn for a performance-summary cell.
+  var pSumBorders = (pSumYMs, psName, factor, opt) => {
     var lastPSName = pSumYMs.slice(-1)[0];
     var endType = psName == lastPSName  ?  ''   :
               /^ym\d\d12$/.test(psName) ?  'y1' :
       /^ym\d\d(03|06|09)$/.test(psName) ?  'm3' :
-                 /^m2|w1$/.test(psName) ?  'va' :
+                    /^m1$/.test(psName) ?  'va' :
+               /^w1|ddcv$/.test(psName) ?  'vb' :
                            factor === 0 ?  'x'  :  '';
     return !endType ?  [] :  [ pSumTypesToBorders[endType] ];
   }
@@ -550,7 +553,7 @@ function extendOpt(op) {
 
     bord: {  // Some cell-border specification generators.
       day :  dayBorders,
-      yymm: yymmBorders,
+      pSum: pSumBorders,
     },
 
     pSums: [  // Info on all standard performance-summary types that are always
@@ -1146,7 +1149,7 @@ function preprocessCalcs(opt, datas, f) {
 
   // 5) Add extra pSum columns, if the period shown on the map has enough data.
   [ [ 'm6', 'pf-6M', 'performance in past 6 months', 'performance 6m',  '1Y' ],
-    [ 'm2', 'pf-2M', 'performance in past 2 months', 'performance 2m',  '3M' ],
+    ///['m2','pf-2M','performance in past 2 months', 'performance 2m',  '3M' ],
     [ 'w3', 'pf-3W', 'performance in past 3 weeks' , 'performance 3w',  '1M' ],
     [ 'w2', 'pf-2W', 'performance in past 2 weeks' , 'performance 2w',  '3W' ],
     [ 'd3', 'pf-3D', 'performance in past 3 days'  , 'performance 3d',  '1W' ],
@@ -1545,7 +1548,7 @@ function makeConf(opt, datas, funcs) {
       factor:  factor,
       text:    f.perfPreciFact2(factor),
       bgColor: f.factorToColor(factor, factHi),
-      borders: bord.yymm(pSumYMs, psName, factor, opt),
+      borders: bord.pSum(pSumYMs, psName, factor, opt),
       tooltip: f.tooltipPerfStr(rowObj.name, descrRow, descrCol, factor),
     });
   }
