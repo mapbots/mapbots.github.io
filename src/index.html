@@ -1,0 +1,1926 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+body { margin: 2px 0 0 24px;  position: relative; }
+button { appearance: none;  outline: none;  box-sizing: border-box;
+         height: 19px;  padding: 0 8px;  border-radius: 1px;
+  border: 0.5px solid #adadad;  transition: background 0.05s, transform 0.05s; }
+button        { background: #e4e4e4; user-select: none; }
+button:hover  { background: #d8d8d8; }
+button:active { background: #c6c6c6; transform: scale(0.99) translate(0.3px, 0);}
+a, a:visited  { color: #228; }
+#svgCont { min-height: 20px; }
+#msg { min-height: 22px;  margin: 10px 0 0 0; }
+button, #msg, #optHead, #optTA { font-family: consolas, courier, monospace;
+                         font-size: 11px;  line-height: 13px;  color: #222; }
+#optHead { margin: 0 0 0 0; }
+#optTA { box-sizing: border-box;  padding: 1px;  border: 1px solid #eee;
+         white-space: pre-wrap;  outline: none;  overflow-wrap: break-word; }
+#hotkey { font-size: 10.5px; color: #aaa; margin: 0 0 0 -2px; }
+.optButton, .optLink { margin: 0 0 4px 22px; }
+.optButton:first-of-type { margin-left: 0; }
+#downloadJSON { margin-left: 8px; }
+.exampleLink { margin: 0 0 0 10px; }
+</style></head>
+<body>
+<div id="svgCont"></div>
+<div id="msg"></div>
+<div id="optHead">
+  <button class="optButton" id="applyOpt"     onclick="applyOpt()" tabindex="1"
+                                                        >Apply options</button>
+  <span id="hotkey">(Ctrl+Enter)</span>
+  <span id="exampleLinks"></span>
+  <a      class="optLink"   id="infoLink"               >Info</a>
+  <button class="optButton" id="copyLink"     onclick="copyLink()"
+                                                        >Copy permalink</button>
+  <button class="optButton" id="downloadSVG"  onclick="downloadSVG()"
+                                                        >Download SVG</button>
+  <button class="optButton" id="downloadJSON" onclick="downloadJSON()"
+                                                        >JSON</button>
+  <button class="optButton" id="scrollR"      onclick="scrollLR(1)"
+                                                        >–&gt;</button>
+  <span id="hotkey">(Ctrl+End)</span>
+</div>
+<textarea id="optTA" rows="30" cols="120" tabindex="2"></textarea>
+</body>
+<script>
+
+
+const NL = '\n';
+const BR = '<br>' + NL;
+const $      = s => document.getElementById(s);
+const clone  = o => JSON.parse(JSON.stringify(o));
+const uniq   = (arr, _=new Set()) => arr.filter(e => !_.has(e) && _.add(e));
+const _      = (par, chi) => (chi.__proto__ = par, chi);  // Inheritance.
+const fixed2 = v => +v.toFixed(2);
+
+
+
+
+/**
+ * Customizable settings.
+ */
+const userOptDefault = {
+  fromDay:     0,   // Show data since (start of) this day-code. 0=default.
+  cellSize:    7,   // Use width-based preset number, or Object like {w:2, h:10}
+  factorHigh:  1.1, // Give number for d1, or Obj like {d1:1.3, m1:1.5, m3:2.5}
+  colorScheme: 1,   // E.g. {low:[255,0,0], mid:[255,255,255], high:[0,127,255]}
+
+  dayMinus1: true,  // In performance-col headers: show tag of day During which
+                    // a perf. was made (:true), or Measured-at00:00UTC (:false).
+  nameFS:   10.5,  nameW: 28,  nameTY: 3, // Name-cell fontsize/width/textOffset.
+  headFS:    6,    headH: 22,  headTX: 1,    // All font-sizes are relative to a..
+  pSumFS:    9.25, pSumW: 24,  pSumTX: 3.5,  // ..6x8-sized day-performance cell.
+  infoBotFS: 9,    infoCalcFS: 9.5,
+  typeW:    15,
+  infoW:   170,
+
+  botOrder: 'phoe drag pega lion shee fox  pand kang falc hipp' +
+           ' dog  tige deer rabb croc puma eagl wolf ostr cat ' +
+           ' rhin hors peli lama flam coli buff gira cow  elep' +
+           ' lamb peng pack shar',
+
+  /**
+   * + Just like a bot's data gives a row of one-day-performance-factor cells,
+   *   a 'calc' gives a row of values, calculated from bots' factors and earlier
+   *   calculated values.
+   * + A calc can be shorthand string, for generating an 'allbots' block, or
+   *   an allocation-specification with leverage etc., or a multi-allocSpec.
+   * + A calc can also be an object, with a `calc.func` that can be given
+   *   as a Function, or as a String that holds the function's code.
+   * + In functions:
+   *   + Each bot- and (earlier-in-order)-calc-name is available as a variable
+   *     that holds the bot/calc's value for the particular day (i.e. cell)
+   *     for which the function is executed.
+   *     So calcs should have a .name value that is valid as a variable name.
+   *   + Functions are available, with a name based on these var-names,
+   *     like `cat_prev()`. See processRowCalcs()->generateForVar().
+   *   + Some other functions are available, like `lev()` to apply leverage.
+   * + A falsy calc puts a separator between rows.
+   * + IMPORTANT:
+   *   Calculations (like `0.2*bot1 + 0.4*bot2`) only give a rough approximation
+   *   of an allocation's performance! Ideally, `data.trades` would be used
+   *   (not implemented here). Also, NapBots' regular, small rebalancing trades
+   *   should then be taken into account.
+   */
+  calcs: [],  // See 'exampleOpts' for example calc-Strings and -Objects.
+
+  ///cSums: [],  // Maybe for later implementation: custom perf.-summary columns.
+};
+
+
+
+
+/**
+ * Other, hard-coded settings.
+ */
+
+const dataURL = ///'https://mapbots.github.io/data/strats.json' ||
+                'https://raw.githubusercontent.com/mapbots/data/main/strats.json';
+
+const mapURL = ///`${ window.location }`.replace(/^(.+?)\?.*$/, '$1') ||
+               'https://mapbots.github.io';
+
+const repoURL = 'https://github.com/mapbots/mapbots.github.io';
+
+const mapDescr=`Auto-updating, programmable map of\nNapBots' daily performances`;
+
+const fromDayDefault = ///190501 ||   // Or from start of month, 12 months ago:
+  (() => { var d = new Date(Date.now()).toISOString().slice(0,10) + 'T00:00Z';
+           d = new Date(d);  d.setDate(1);  d.setMonth(d.getMonth() - 12);
+           return d.toISOString().slice(2,10).replace(/-/g,'') })();
+
+const typesToNames = {
+  A: ['phoe','drag','pega'],
+  B: ['pack','shar'],
+  H: ['lion','tige','cat' ,'wolf','ostr','puma','fox' ,'falc','eagl','kang',
+      'croc'],
+  D: ['rhin','hors','lama','peli','flam','coli','deer','pand','hipp','shee',
+      'dog' ,'rabb','buff'],
+  W: ['elep','peng','lamb','gira','cow' ],
+};
+const typesInFull  =  {
+  A: 'AI strategy, hourly signal', B: 'Pre-Built allocation, hourly signal',
+  H: 'Hourly signal', D: 'Daily signal', W: 'Weekly signal',
+};
+const typesToRgb   = {
+  A: '#a200a2', B: '#a200a2', H: '#0070c0', D: '#92d050', W: '#ffd966',
+};
+const namesInFull  =  {
+  phoe: 'magma PHOEnix',        drag: 'lava DRAGon',
+  pega: 'fire PEGAsus',
+  pack: 'wolf PACK',            shar: 'shiver of SHARks',
+  lion: 'gold LION',            tige: 'jacinth TIGEr',
+  cat : 'tanzanite CAT',        wolf: 'silver WOLF',
+  ostr: 'diamond blue OSTRich', puma: 'ruby PUMA',
+  fox : 'amethyst FOX',         falc: 'agate FALCon',
+  eagl: 'sardius EAGLe',        kang: 'pearl KANGouroo',
+  croc: 'emerald CROCodile',
+  rhin: 'diamond RHINo',        hors: 'jade HORSe',
+  lama: 'red spinel LAMA',      peli: 'moonstone PELIcan',
+  flam: 'zircon FLAMingo',      coli: 'scapolite COLIbri',
+  deer: 'agate DEER',           pand: 'onyx PANDa',
+  hipp: 'beryl HIPPopotamus',   shee: 'musgravite SHEEp',
+  dog : 'citrine DOG',          rabb: 'mistic quartz RABBit',
+  buff: 'jasper BUFFalo',
+  elep: 'sapphire ELEPhant',    peng: 'ruby PENGouin',
+  lamb: 'opal LAMB',            gira: 'emerald GIRAffe',
+  cow : 'amber COW',
+};
+
+const weekdays = {
+  short : [ 'su' , 'mo' , 'tu' , 'we' , 'th' , 'fr' , 'sa'  ],
+  medium: [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ],
+};
+
+
+// Performance-factors are represented by colors:
+// <= (1/factorHigh) :  opt.rgbLow
+// 1/factorHigh --- 1:  opt.rgbLow---Mid  (linear based on % loss)
+// 1                 :  opt.rgbMid
+// 1 --- factorHigh  :  opt.rgbMid---High (linear based on % profit)
+// >= factorHigh     :  opt.rgbHigh
+//
+// Note: for 'factorLow' we use `1/factorHigh`, as e.g. a 10% profit is needed
+// to recover from a -9% loss, (factorHigh=1.10 –> factorLow=1/1.10≈0.91),
+// or e.g. 100% profit (=*2) is needed to undo -50% loss (=*0.5).
+const colorSchemeDefaults = [ // Color-schemes that can be addressed by number.
+  0,                          // First scheme has nr 1.
+  { low: [248,105,107],  mid: [255,235,132],  high: [99,190,123] },
+  { low: [255,  0,  0],  mid: [255,255,255],  high: [ 0,127,255] },
+  { low: [248,105,107],  mid: [255,255,255],  high: [99,190,123] },
+  { low: [219, 67, 37],  mid: [230,225,180],  high: [ 0,146,157] },
+  { low: [255,255,  0],  mid: [160,160,160],  high: [ 0, 16,255] },
+  { low: [248,105,107],  mid: [255,240,150],  high: [99,190,123] },
+];
+const rgbEmpty = '#f4f4f4';  // For 'no data' cells.
+
+
+const factorHighDefault = {  // Default values for factorHighs, per timespan.
+  d1: 1.1,  w1: 1.3,  m1: 1.55,  m3: 1.75,  y1: 6,  y2: 12,  y3: 24,  ym: 1.55,
+  dd: 3,  ema: 1.15,
+};
+
+const emaWeightDefault = 1.35;  // How fast EMA-weight shrinks in `_wprod()`.
+
+const perfDayTypesToBorders = {            // (lineWidth = w * cellWidth).
+  y1: { side: 'right',  color: '#000',     w: 0.1   },
+  m3: { side: 'right',  color: '#888',     w: 0.065 },
+  m1: { side: 'right',  color: '#aaa',     w: 0.05  },
+  x : { side: 'right',  color: '#fbfbfb',  w: 0.05  }  // For no-data cells.
+};
+
+const pSumTypesToBorders =  // Reuse day-cells' y1/m3/x borders, but adjust for..
+  Object.keys(perfDayTypesToBorders).reduce((o, k) =>    //..4x wider pSum-cells.
+    k == 'm1' ?   o :  (o[k] =
+      { ...perfDayTypesToBorders[k], w: perfDayTypesToBorders[k].w / 4 },  o),
+  {});
+
+
+// Default values for cell-drawing specification objects. These are all
+// properties supported by `drawCell()`.
+const cDef = {
+  factor:     -1,    // 0: 'no data', else: a performance factor.
+  bgColor:     0,    // 0: transparent, else: calc'ed from factor & a factorHigh.
+  borders:    [],    // E.g. [{side:'right', w:0.05, color:'#aaa'},...].
+  text:       '',    // Text in cell.
+  tx:         0,     // Text's x/y-offset.
+  ty:         0,     //  "
+  rotate:     0,     // 0: horizontal, 90: for rotating text in a column header.
+  fontSize:  10.5,
+  tColor:    '#000', // Text-color.
+  tCss:      '',     // Extra CSS styling to add to text.
+  moreText:  [],     // Objs w opt. props: text,tx,ty,rotate,fontSize,tColor,url.
+  tooltip:   '',
+  url:       '',     // Hyperlink to put over cell if colored, or else its text.
+  onclick:   false,
+};
+
+
+const tips = {
+  USDT: {address: 'TUbMpE1p6mzRENCXn7vSrUmJJjxtSqA6xY',         network: 'TRC20'},
+  BTC : {address: '1QCHF3uqUaJ9NJ8CykozzCnBytfGTpSjYp',           network: 'BTC'},
+  SOL : {address: 'AJAtpEnaFQhq9FHt6H1nY5Hsww6qQoTG64EapKBasDFA', network: 'SOL'},
+}
+
+
+
+
+/**
+ *
+ */
+const exampleOpts = [
+  { fromDay:   200501,
+    cellSize:  7.8,
+    calcs: [
+      'lion10 tige10 cat20 rhin30 hors30',
+      'lion10 tige10 cat20 rhin30 hors30 lev1.5',
+      0,
+      'tige20 cat20 rhin20 hors20 peli20 lev1,1.5',
+    ],
+  },
+
+  { fromDay:     0,
+    cellSize:    6,
+    colorScheme: 1,
+    factorHigh:  factorHighDefault.d1,  // This sets factorHigh for 'd1' only.
+    infoW:     178,  // } Smaller font &andlarger width for info-column..
+    nameW:      31,  // } ..to fit the calc-descrs.
+    calcs: [
+      'tige20,20  cat10,30,10  rhin20 hors20 peli20  spread10 step10  lev1.5',
+    ],
+  },
+
+  { fromDay:     0,
+    cellSize:    6,
+    colorScheme: 1,
+    factorHigh:  factorHighDefault.d1,
+    infoW:     178,
+    nameW:      30,
+    calcs: [
+      { name: 'beast1',  descr: 'lion10 tige10 cat20 rhin30 hors30 lev1.5',
+        func: _ => lev(1.5,  lion*.10 +tige*.10 +cat *.20 +rhin*.30 +hors*.30) },
+      { name: 'beast2',  descr: 'tige20 cat20 rhin20 hors20 peli20 lev1.5',
+        func: _ => lev(1.5,  tige*.20 +cat *.20 +rhin*.20 +hors*.20 +peli*.20) },
+      { name: 'beast3',  descr: 'tige20 cat20 rhin10 hors30 peli20 lev1.5',
+        func: _ => lev(1.5,  tige*.20 +cat *.20 +rhin*.10 +hors*.30 +peli*.20) },
+      0,
+      { name: 'beast1d7', descr: 'beast1, 7-day-ema',
+        func:  _ => beast1_wprod(7) ,  factorHigh: 1.2,  pSums: 0 },
+      { name: 'beast2d7', descr: 'beast2, 7-day-ema',
+        func:  _ => beast2_wprod(7) ,  factorHigh: 1.2,  pSums: 0 },
+      { name: 'beast3d7', descr: 'beast3, 7-day-ema',
+        func: '_ => beast3_wprod(7)',  factorHigh: 1.2,  pSums: 0 },
+    ],
+  },
+
+  { fromDay: 190101,
+    calcs: [
+      `allbots ema7 emaw${ emaWeightDefault }`,
+      ///0, 0,
+      ///'allbots lev1.1` ema15 emaw1.25',
+    ],
+    cellSize:    { w: 1.2,  h: 12 },
+    colorScheme: 1,
+    factorHigh:  { ema: factorHighDefault.ema },
+  },
+
+  { ...clone(userOptDefault),  // Add all userOptDefault properties.
+    fromDay:    204,  // Shorthand for 200401.
+    cellSize:     4,
+    infoCalcFS:   9,
+    nameW:       38,
+    factorHigh:  { ...factorHighDefault },  // Sets factorHigh for d1, m1, etc.
+    colorScheme: { ...colorSchemeDefaults[1] },
+    botOrder:    userOptDefault.botOrder.trim().replace(/\s+/g,' '),
+    calcs: [
+      'hors50 peli50 spread 50 step 5 lev1.5 cond "hors != peli"',
+      0,
+      { name: 'pack15'   ,  descr: 'pack lev1.5',
+        func: _ => lev(1.5, pack) },
+      { name: 'pack15d7e',  descr: 'pack lev1.5, 7-day exp-moving-avg',
+        func: _ => pack15_wprod(7),  pSums: 0 },
+      { name: 'pack15d7p',  descr: 'pack lev1.5, 7-day moving-avg',
+        func: _ => pack15_prod(7) ,  pSums: 0 },
+      0,
+      { name: 'beast1',  descr: 'lion10 tige10 cat20 rhin30 hors30 lev1.3',
+        func: _ => lev(1.3,  lion*.10 +tige*.10 +cat *.20 +rhin*.30 +hors*.30) },
+      { name: 'beast2',  descr: 'tige20 cat20 rhin20 hors20 peli20 lev1.5',
+        func: _ => lev(1.5,  tige*.20 +cat *.20 +rhin*.20 +hors*.20 +peli*.20) },
+      { name: 'beast3',  descr: 'tige20 cat20 rhin10 hors30 peli20 lev1.4',
+        func: _ => lev(1.4,  tige*.20 +cat *.20 +rhin*.10 +hors*.30 +peli*.20) },
+      0,
+      { name: 'beast1d7', descr: 'beast1, 7-day-ema',
+        func:  _ => beast1_wprod(7) ,  factorHigh: 1.2,  pSums: 0 },
+      { name: 'beast2d7', descr: 'beast2, 7-day-ema',
+        func:  _ => beast2_wprod(7) ,  factorHigh: 1.2,  pSums: 0 },
+      { name: 'beast3d7', descr: 'beast3, 7-day-ema',
+        func: '_ => beast3_wprod(7)',  factorHigh: 1.2,  pSums: 0 },
+      0,
+      { name: 'beast1d15',  descr: '15-day-ema',
+        func: _ => beast1_wprod(15,1.2),  factorHigh: 1.2,  pSums: 0 },
+      { name: 'beast2d15',
+        func: _ => beast2_wprod(15,1.2),  factorHigh: 1.2,  pSums: 0 },
+      { name: 'beast3d15',
+        func: _ => beast3_wprod(15,1.2),  factorHigh: 1.2,  pSums: 0 },
+      0,
+      { name: 'diff21d7',  descr: 'beast2 vs 1, daily',
+        func: _ => beast2d7 / beast1d7,  pSums: 0},
+      { name: 'diff23d7',  descr: 'beast2 vs 3',
+        func: _ => beast2d7 / beast3d7,  pSums: 0},
+      { name: 'diff31d7',  descr: 'beast3 vs 1',
+        func: _ => beast3d7 / beast1d7,  pSums: 0},
+      0,
+      { name: 'beast1T', descr: 'cumulative performance',
+        func: _ => beast1 * (beast1T_prev() || 1),   factorHigh: 8  ,  pSums:0 },
+      { name: 'beast2T',
+        func: _ => beast2 * (beast2T_prev() || 1),   factorHigh: 8  ,  pSums:0 },
+      { name: 'beast3T',
+        func: _ => beast3 * (beast3T_prev() || 1),   factorHigh: 8  ,  pSums:0 },
+      0,
+      { name: 'diffT21',  descr: 'beast2 vs 1, log cumulative',
+        func: _ => 1 + Math.log(beast2T / beast1T),  factorHigh: 1.9,  pSums:0 },
+      { name: 'diffT23',
+        func: _ => 1 + Math.log(beast2T / beast3T),  factorHigh: 1.9,  pSums:0 },
+      { name: 'diffT31',
+        func: _ => 1 + Math.log(beast3T / beast1T),  factorHigh: 1.9,  pSums:0 },
+    ],
+  }
+];
+
+
+
+
+// Replace any calc.func Function to String (so it can be serialized in a URL).
+[ userOptDefault, ...exampleOpts ].forEach( function calcFuncsToStrings(opt) {
+  if (opt.calcs) {
+    opt.calcs = opt.calcs.map(calc =>
+      typeof calc=='object'  &&  calc.func  &&  typeof calc.func=='function' ?
+        { ...calc,  func: calc.func.toString().replace(/\s+/g, ' ') } :
+        calc
+    )
+  }
+});
+
+
+
+
+
+/**
+ * Extends the user-options (which are easy to define) to a form that is easy
+ * to use for the code. Adds some hard-coded options too.
+ */
+function extendOpt(op) {
+  // Handle fromDay: e.g. 210901, or 2109 as shorthand, or falsy for default.
+  var day = op.fromDay;
+  day = !day     ?  fromDayDefault :
+    day >= 10000 ?  day :
+    day >= 1000  ?  day * 100 + 1 :                            // 2109 => 210901.
+    day >= 100   ?  ~~(day/10) * 10000 + day % 10 * 100 + 1 :  //  219 => 210901.
+    day >= 10    ?  day * 10000 + 101 :                        //   21 => 210101.
+    false;
+  if (day  &&  day % 100 == 0)  day++;                       // 210900 => 210901.
+
+  var cs = op.cellSize;  // Performance-factor cell dimensions (Obj or Nr).
+  cs = (cs || {}).w  ?  cs :
+        typeof cs != 'number' || cs < 0 ?  { w: 6, h: 14 } :
+        cs==0 ?  { w: 1.6,  h: 12     } :
+                 { w:  cs,  h: Math.max(12, cs + 8) };  // For cs==1/2/3...etc.
+
+  var rgb = op.colorScheme;  // `op.colorScheme` can be an Object or a Number.
+  rgb = typeof rgb == 'object' ?  rgb :
+        colorSchemeDefaults[rgb && rgb < colorSchemeDefaults.length ?  rgb :  1];
+
+  var factorHigh = {  // `op.factorHigh` can be an Object or a Number.
+    ...factorHighDefault,
+    ...(typeof op.factorHigh == 'number'  &&  { d1: op.factorHigh }),
+    ...op.factorHigh,
+  };
+
+  cDef.factorHigh = factorHigh.d1;  // Update with custom value;
+
+
+  // Scale text etc. based on a reference Cell Width & Cell Height, and on a..
+  // ..reference Fontsize for Name-text & Head-text.
+  var scaleCW = v => fixed2(cs.w      /  6   *         v );
+  var scaleCH = v => fixed2(cs.h      / 14   *         v );
+  var scaleFN = v => fixed2(op.nameFS / 10.5 * scaleCH(v));
+  var scaleFH = v => fixed2(op.headFS /  6   * scaleCW(v));
+
+  // Normal x/y-offset for horizontal/vertical text in cells, respectively.
+  var tx = scaleFH(op.headTX);
+  var ty = cs.h - scaleFN(op.nameTY);
+
+  // Automatically make the Name-column a bit wider when calcs are present.
+  var nameCW = op.nameW * 1.42;
+
+  // Returns the borders that should be drawn for a 1-day performance-cell.
+  // + Note: PnL measured at Jan 1 00:00 UTC is PnL made during the day before:
+  //   on Dec 31, so month-separators are drawn to the _right_ of YYMM01 cells.
+  // + (But if `opt.dayMinus1=true`, then the SVG's performance-col headers
+  //    show `YYMM01 - 1` to make that intuitive again).
+  var dayBorders = (cols, colNr, factor) => {
+    var colName = cols[colNr];
+    var endType = colNr == cols.length-1 ?  ''   :  // No border after last cell.
+              /^\d\d0101$/.test(colName) ?  'y1' :
+      /^\d\d(04|07|10)01$/.test(colName) ?  'm3' :
+               /^\d{4}01$/.test(colName) ?  'm1' :
+                            factor === 0 ?  'x'  :  '';
+    return !endType ?  [] :  [ perfDayTypesToBorders[endType] ];
+  }
+
+  // Returns the borders that should be drawn for a 'ymYYMM' perf-summary cell.
+  var yymmBorders = (pSumYMs, psName, factor, opt) => {
+    var lastPSName = pSumYMs.slice(-1)[0];
+    var endType = psName == lastPSName  ?  ''   :
+              /^ym\d\d12$/.test(psName) ?  'y1' :
+      /^ym\d\d(03|06|09)$/.test(psName) ?  'm3' :
+                           factor === 0 ?  'x'  :  '';
+    return !endType ?  [] :  [ pSumTypesToBorders[endType] ];
+  }
+
+  var pvs = 'in period viewed on this map';
+  var pv  = 'in period on map';
+
+
+  var opt = {
+    dataURL:    dataURL,
+    mapURL:     mapURL,
+    repoURL:    repoURL,
+    fromDay:    day,
+    dayMinus1:  op.dayMinus1===undefined ?  true :  op.dayMinus1,
+
+    factorHigh: factorHigh,
+    rgbLow:     rgb.low,
+    rgbMid:     rgb.mid,
+    rgbHigh:    rgb.high,
+    rgbEmpty:   rgbEmpty,
+
+    botNamesOrdered: (op.botOrder || '').trim().split(/\s+/g),
+    typesToNames:    typesToNames,
+    typesInFull:     typesInFull,
+    typesToRgb:      typesToRgb,
+    namesInFull:     namesInFull,
+
+    weekdays:        weekdays,
+
+    col: {  // Specifications for column types.
+      day  : { w:         cs.w      },
+      name : { w: scaleFN(op.nameW) },
+      nameC: { w: scaleFN(  nameCW) },
+      type : { w: scaleFN(op.typeW) },
+      info : { w: scaleFN(op.infoW) },
+      pSum : { w: scaleFN(op.pSumW) },
+    },
+
+    row: {  // Specifications for row types.
+      head: { h: Math.round(scaleFH(op.headH)) },
+      bot : { h: cs.h },
+      calc: { h: cs.h },
+    },
+
+    cell: {  // Specifications for cell types.
+      head  : { ...cDef,  tx,  fontSize: scaleCW(op.headFS),     rotate: 90,
+                          txPSumMult: 3 },
+      name    :{...cDef,  ty,  fontSize: scaleCH(op.nameFS)                    },
+      type    :{...cDef,  ty,  fontSize: scaleCH(op.nameFS)                    },
+      infoBot :{...cDef,  ty,  fontSize: scaleCH(op.infoBotFS ), tColor: '#aaa'},
+      infoCalc:{...cDef,  ty,  fontSize: scaleCH(op.infoCalcFS), tColor: '#999'},
+
+      perf  : { ...cDef,  bord: dayBorders },       // 1-day performance cell.
+
+      pSum  : { ...cDef,  ty,           // Performance-summary cell (e.g. 1Y, 3M).
+        tx: scaleFN(op.pSumTX),  fontSize: scaleCH(op.pSumFS),   tColor: '#222'
+      },
+    },
+
+    bord: {  // Some cell-border specification generators.
+      day :  dayBorders,
+      yymm: yymmBorders,
+    },
+
+    pSums: [  // Info on all standard performance-summary types that are always
+              // present. Later, prepDatas() will add info for any last12M perfs
+              // found in bots-data.
+      [ 'v'   , 'pf-v' , `performance ${ pvs }`        , `performance ${pv}` ],
+      [ 'y1'  , 'pf-1Y', 'performance in past year'    , 'performance 1y'    ],
+      [ 'm3'  , 'pf-3M', 'performance in past 3 months', 'performance 3m'    ],
+      [ 'm1'  , 'pf-1M', 'performance in past month'   , 'performance 1m'    ],
+      [ 'w1'  , 'pf-1W', 'performance in past week'    , 'performance 1w'    ],
+      [ 'dd'  , 'dd-1Y', 'max drawdown in past year'   , 'max drawdown 1y'   ],
+      [ 'ddv' , 'dd-v',  `max drawdown ${ pvs }`       , `max drawdown ${pv}`],
+      [ 'ddcv', 'ddc-v', `current drawdown since highest cumulative `+
+                             `performance\n${ pvs }`, `current drawdown ${pv}`],
+      [ 'dd1v', 'dd1-v', `max drawdown between two consecutive days\n${ pvs }`,
+                                              `max single-day-drawdown ${pv}`],
+    ] .map(a => ({ name: a[0],  head: a[1],  descr: a[2],  descrMini: a[3] })),
+
+    calcs: op.calcs || [],  // Calculated-row specification objects.
+
+    cSums: op.cSums || [],  // Calculated perf-summaries spec. objects.
+  };
+
+
+  opt.sep = {  // Some row- or col-separator sizes.
+    botsCalcs: fixed2(opt.row.calc.h * 1.150),
+    calcGroup: fixed2(opt.row.calc.h * 0.450),
+    name2    : fixed2(opt.col.day .w * 0.700),
+    pSumV    : fixed2(opt.col.pSum.w * 0.070),
+    pSumDD   : fixed2(opt.col.pSum.w * 0.075),
+  };
+
+  return opt;
+}
+
+
+
+
+/**
+ *
+ */
+function helperFuncs(opt) {
+  var f = {};
+
+  f.botIDNice     = id => (id||'').toLowerCase().replace(/^STRAT_/i, '')
+                          .replace(/_USD_|_/gi, '-');
+
+  f.botIDToURL    = id => `https://platform.napbots.com/strategyDetails/${ id }`;
+
+  f.dayTagInFull  = dt => `${dt}`.replace(/^(\d\d)(\d\d)(\d\d)$/, '20$1-$2-$3');
+  f.fullDayToTag  = s  => s.replace(/^\d\d(\d\d)-(\d\d)-(\d\d).*$/, '$1$2$3');
+
+  f.dayTagMinus1D = dt => f.fullDayToTag(new
+                            Date(Date.parse(f.dayTagInFull(dt)+'T00:00Z')-864e5)
+                            .toISOString());
+
+  f.dayTagMinusXMonthsPlus1D = (dt, n) => {
+    var d = new Date(f.dayTagInFull(dt) + 'T00:00Z');
+    var m = d.getMonth();
+    d.setMonth(m - n); // E.g. for dt=190331, n=1, this gives 190303. Then next,..
+    while (d.getMonth()  >  (m - n + 12) % 12) {      // ..go back until 190228.
+      d.setDate(d.getDate() - 1);
+    }
+    d.setDate(d.getDate() + 1);  // (For the 'Plus1D').
+    return f.fullDayToTag(d.toISOString());
+  }
+
+  f.dayTagWeekDay = (dt, type = 'short') => {
+    var num = new Date(f.dayTagInFull(dt)) .getDay();
+    return opt.weekdays[type][num] || '';
+  }
+
+  f.perfPreciPerc = factor => {  // Round a performance-factor, as a percentage.
+    if (!factor)  return '';
+    var val = (factor - 1) * 100;
+    var abs = Math.abs(val);
+    return (val >= 0   ?  '+' :  '') +
+           (abs == 0   ?  '0' :
+            abs  < 1   ?  val.toPrecision(2) :
+            abs  < 100 ?  val.toFixed(1)     :  Math.round(val)
+           );  ///+ (toPercentage ? '%' : '');
+  }
+
+  f.perfPreciFact2 = factor => {  // Round a performance-factor, as a factor: ..
+    if (!factor)  return '';      // in short form for a performnce-summary cell.
+    var abs = Math.abs(factor);
+    return abs  < 0.1 ?  factor.toPrecision(2) :
+           abs  < 10  ?  factor.toFixed(2)     :
+           abs  < 100 ?  factor.toFixed(1)     :  Math.round(factor);
+  }
+
+  f.perfPreciFact6 = factor => {  // Round a performance-factor, as a factor: ..
+    return !factor ?  '' :        // in tooltip long-form, with min. 2 decimals.
+          (+factor).toFixed(6).replace(/(?<=\d\d)0+$/, '');
+  }
+
+  f.tooltipPerfStr = (name, rowDescr, descr, factor) => { //(descr is a colDescr).
+    if (/^\d{6}$/.test(`${descr}`)) {  // =Is `descr` a date-tag like 210901?
+      descr = opt.dayMinus1 ?  f.dayTagMinus1D(descr) : descr ;
+      descr = ///(opt.dayMinus1 ? 'during ' : 'at ') +
+              descr + f.dayTagWeekDay(descr) + (opt.dayMinus1 ? '' : '-0000');
+    }
+    return  `${ name }` +
+            (!descr    ?         '' :  `, ${ descr }`) +
+            (!rowDescr ?         '' :  `  (${ f.botIDNice(rowDescr) })`) + NL +
+            (!factor   ?  'no data' :  `${ f.perfPreciPerc (factor) } %  (×${
+                                           f.perfPreciFact6(factor) })`);
+  }
+
+  f.factorToColor = (factor, factorHigh) => {
+    if (!factor)  return opt.rgbEmpty; // Factor==0 means: no data for that cell.
+    var l = factor < 1 ?  Math.min(1, (factor-1) / (1/factorHigh-1) ) :  0;
+    var h = factor > 1 ?  Math.min(1, (factor-1) / (  factorHigh-1) ) :  0;
+    var m = 1 - h - l;
+    var [r, g, b] = [0, 1, 2].map(i =>
+      Math.round(l * opt.rgbLow[i] + m * opt.rgbMid[i] + h * opt.rgbHigh[i])
+    );
+    return '#' + [r, g, b].map(s => s.toString(16).padStart(2,'0')).join('');
+  }
+
+  return f;
+}
+
+
+
+
+/**
+ *
+ */
+async function fetchJSON(url) {
+  try          { return await (await fetch(url)).json() }
+  catch(error) { console.log(error);  return { error } }
+}
+
+
+
+
+/**
+ * Based on fetch()'ed data: prepares processed data-objects.
+ */
+function prepDatas(opt, data) {
+  var version = data.v;
+
+  // - botNames {Array}: custom-ordered list of bot-names.
+  // - bots     {Array}: correspond'ly sorted list of bots (<->data.bots is Obj).
+  var botNames = Object.keys(data.bots);
+  botNames = uniq([...opt.botNamesOrdered, ...botNames]) //Names in custom order.
+            .filter(s => botNames.includes(s));     // (Remove nonexistent ones).
+
+  var bots = botNames.map(name => ({name, ...data.bots[name]})); // Sorted Array.
+
+
+  // - days    {Array} : day-keys in data.factors, at or after `opt.fromDay`.
+  // - factors {Object}: a modified transpose of data.factors(<–has days as keys).
+  //                     Is an Object with as keys: bot-name, and as values: an
+  //                     array of all (post-filter) day-perf factors of that bot.
+  // + NOTE: strats.json lists measurements made at 00:00 UTC for each day-key.
+  //   E.g. key '210502' refers to a measurement made at 2021-05-02 00:00 UTC,
+  //   which menas: performances during the 24 hours of 200501, the day before!
+  //   In the code, we work with these measurement timepoints.
+  //   In the SVG, on top of each day-performance-column, we can show the day
+  //   during which the performance was made, i.e. the day before:
+  //   by setting `opt.dayMinus1` to true.
+  var days = Object.keys(data.factors);
+  if (opt.fromDay)  days = days.filter(d => +d > +opt.fromDay);
+
+  // If today in UTC is not yet in days (e.g. data not yet available): add it.
+  let today = new Date().toISOString().slice(2,10).replace(/-/g, '');
+  if (!days.find(d => d == today))  days.push(today);
+
+
+  var factors = botNames.reduce((factors, name) => {  // Transpose data.factors.
+    let origBotNr = Object.keys(data.bots).findIndex(s => s == name);
+    factors[name] = days.map(day => (data.factors[day]||[])[origBotNr] || 0);
+    return factors;
+  }, {});
+
+
+  var calcs = opt.calcs;  // Move into `datas` because we'll add calc'ed pSums.
+  var cSums = opt.cSums;
+
+  return { botNames, bots, calcs, days, factors, cSums, version };
+}
+
+
+
+
+/**
+ * Converts an alloc/etc-specification string into an Array of Objects, like:
+ *   'cat40 XY lev1.5'  =>  [{s:'cat',n:40}, {s:'xy',n:''}, {s:'lev',n:1.5}].
+ */
+function splitSpecString(str) {
+  return ((str || '')
+    .toLowerCase()
+    .match(/\b[a-z]+\s*(?:\d+(?:\.\d*)?|\.\d+)?\b/g)      //   => ['cat40', ...]
+    || [])
+    .map(s => s.match(/^([a-z]+)\s*(.*)$/).slice(1,3))    // [['cat','40'], ...]
+    .map(p => ({ s: p[0],                             // [{s:'cat',n:'40'}, ...]
+                 n: p[1]==='' ? p[1] : +p[1] }));
+}
+
+
+
+/**
+ *
+ */
+function wrapStrInFunc(str, args = 'o') {
+  return `function (${ args }) { return ${ str }; }`;
+}
+
+
+
+
+/**
+ * Converts a string like:
+ *   'allbots lev1.5', 'allbots EMA7', 'allbots lev1.3 EMA10 EMAw1.35' etc.
+ * into a list of calc-Objects.
+ * Note: (unlike allocSpecs), keys must be in this order: allbots,lev,ema,emaw.
+ *
+ */
+function allbotsSpecToCalcs(str, opt, datas, f) {
+  var { botNames, bots } = datas;
+
+  if (!/^\s*allbots\b/i.test(str))  return false;
+
+  var { lev, ema, emaw } = splitSpecString(str)
+                          .reduce((o, {s, n}) => (o[s] = n, o),  {});
+  var emawN = 0&& emaw;  // (Disabled for now: Add EMA-weight in the calc name).
+
+  return !(lev || ema) ?  false :
+    botNames.reduce((arr, name, r) => arr.concat({
+      name:  name +
+             ( lev      ?     `${ lev  }l`             :  '') +
+             ( ema      ?     `${ ema  }${lev&&!emawN? '': 'd'}`: '') +
+             ( emawN    ?    `_${ emaw }`              :  ''),
+      descr: ( lev      ?  `lev${ lev  }`              :  '') +
+             ( lev&&ema ?  ', '                        :  '') +
+             ( ema      ?     `${ ema  }d exp-mov-avg` :  '') +
+             ( emaw     ?   `-w${ emaw }`              :  '') +
+             `: ${ f.botIDNice(bots[r].id) }`,
+      func:  wrapStrInFunc(  // E.g.: 'lev(1.5,cat_wprod(7))'.
+               (lev ?  `lev(${ lev },` :  '') + name +
+               (ema ?  `_wprod(${ ema }${ emaw ? `, ${emaw}` : '' })`:  '') +
+               (lev ?  ')':  '')
+             ),
+      ...(ema && {
+        factorHigh: opt.factorHigh.ema,
+        pSums:      false,
+      })
+    }), []);
+}
+
+
+
+
+/**
+ *
+ */
+function multiAllocSpecToCalcs(str, allocNr, datas) {
+  var arr = expandMultiAllocSpec(str);
+  if (arr.length == 0)  arr = [ str ];
+  if (arr.length > 50) {  // Show info-msg in console when generating many calcs.
+    console.log(`Info: ${ arr.length } combinations for '${ str }'`);
+  }
+  var one = arr.length == 1;
+  var nrF = i => one ?  allocNr :  `${ allocNr }i${ i + 1 }`;
+  return arr.map((s, i) =>  allocSpecToCalc(s, nrF(i), datas, one?1:2));
+}
+
+
+
+
+/**
+ * Given a shorthand allocation-specification string like:
+ *   'cat40 hors60 lev1.5 slip.05',
+ * returns a calc-Object.
+ * Note: bot-allocation and slippage numbers are interpreted as percentages,
+ * so the above will generate the calc-function:
+ *   () => slip(0.0005, lev(1.5, cat*0.40 + hors*0.60)) .
+ */
+function allocSpecToCalc(str, allocNr, datas, padStartDescr = 0) {
+  var { botNames } = datas;
+
+  var lev   = false;
+  var slip  = false;
+  var func  = '';
+  var descr = '';
+  try {
+    splitSpecString(str)  // => E.g. [{s:'cat',n:40}, ...].
+      .forEach(({s, n}) => {
+        if      (s == 'lev' )  lev  = n;
+        else if (s == 'slip')  slip = n;
+        else if (botNames.includes(s)) {
+          if (n==='')  n = 100;
+          func  += `${ func .length ? ' + ' : '' }${ s }*${ fixed2(n / 100) }`;
+          descr += `${ descr.length ? ' '   : '' }${ s }${
+                       Math.round(n).toString().padStart(padStartDescr,'0') }`;
+        }
+      });
+  }
+  catch(err) { func = '0' }
+
+  if (lev ) {
+    func   =   `lev(${ fixed2(lev)              }, ${ func })`;
+    descr +=  ` lev${  fixed2(lev) }`;
+  }
+  if (slip) {
+    func   =  `slip(${ +(slip / 100).toFixed(5) }, ${ func })`;
+    descr += ` slip${  +(slip      ).toFixed(3) }`;
+  }
+
+  return {
+    name : `alloc${ allocNr }`,  ///descr.replace(/\s|\./g, ''),
+    descr: descr,
+    func : wrapStrInFunc(func),
+  };
+}
+
+
+
+/**
+ * Given an multi-allocation-specification string like:
+ *   'lion30 tige30,30 cat40  spread 2  step 1  lev 1,1.5' , or
+ *   'hors50 rhin50 lev1,1.2,1.5',
+ * returns a list of single allocation-specification strings; e.g. here:
+ *   [ 'lion28 tige30 cat42',
+ *     'lion29 tige30 cat41',
+ *     ...
+ *     'lion32 tige30 cat38',
+ *     'lion28 tige30 cat42 lev1.5',
+ *     ...
+ *     'lion32 tige30 cat38 lev1.5' ],
+ *  and
+ *  [ 'hors50 rhin50',  'hors50 rhin50 lev1.2',  'hors50 rhin50 lev1.5' ].
+ */
+function expandMultiAllocSpec(str) {
+  var s = str;
+  if (typeof s != 'string'  ||  s.trim() === '')  return [ str ];
+
+  // 1.Split individual parts into optional key-value properties, including:
+  //   obj.lev    = number or Array of numbers (from comma-separated string).
+  //   obj.slip   = number or Array of numbers ( " ).
+  //   obj.[bot*] = number or Array of numbers ( " ) like: [min, max, step].
+  //   obj.spread = number             } (Will be overriden for a..
+  //   obj.step   = number (default:1) }  ..[bot*] that is a list).
+  //   obj.cond   = Function: extra condition for an alloc to be included
+  //                (in addition to `bots-sum==100`). Function-args: an
+  //                alloc single-Object (e.g. `{ lion:40, cat:60 }`).
+  // Example: 'lion30 tige30 cat40  lev 1,1.3,1.5  cond "lion+tige==60"'
+  //      => { lion:30, tige:30, cat:40,  lev: [1, 1.3, 1.5],
+  //           cond: o => o.lion+o.tige==60 } .
+  var [_, $1, cond, $3] = s.match(/(^|^.*?\s)cond\s*"(.*)"(.*)$/) || [];
+  if (cond) {
+    s = $1 + $3;
+    cond = 'o=>' + cond.replace(/([a-z]+)/gi, 'o.$1');
+  }
+
+  s = '{' +
+      s .replace(/([a-z]+)\s*([\d.]+(,\s*[\d.]+)*)/g, '"$1":$2,')
+        .replace(           /([\d.]+(,\s*[\d.]+)+)/g, '[$1]')
+        .replace(/,\s*$/, '') + '}';
+
+  try {
+    var obj = JSON.parse(s);
+    if (cond)  obj.cond = eval(cond);
+  }
+  catch(e) {
+    return [ str ];
+  }
+
+
+  // 2.Derive an `obj` where each botName, lev, and slip are arrays of values.
+  // + Turn the given lev and slip into (or keep them as) lists of values.
+  // + Turn any botName-value into an Array of numbers:
+  //   - if value is a number, then based on `spread` (0 if absent) and `step`,
+  //   - if value is a string-list ('min,max'/'min,max,step') then based on that.
+  //   Example: 'cat20 spread10 step 5 ...' and
+  //            'cat10,30,5 ...'            both generate:
+  //        =>  { cat: [10, 15, 20, 25, 30],  ... } .
+  var { lev, slip, spread, step, cond, ...alloc } = obj;
+
+  spread = Math.max(spread, 0) || 0;
+  step   = Math.max(step,   1) || 1;
+  for (let key in alloc) {
+    let val = alloc[key];
+    let arr = alloc[key] = [];
+    if (val.length) {
+      var a = val[0]!==undefined ?  val[0] :  0;
+      var z = val[1]!==undefined ?  val[1] :  (val[0]!==undefined ? a : 100);
+      var s = val[2]!==undefined ?  val[2] :  step;
+    }
+    else if (spread > 0) {
+      a = Math.max(0, val - spread     );
+      z = Math.min(   val + spread, 100);
+      s = step;
+    }
+    else  {
+      a = z = val;
+    }
+    for (let i = a;  i <= z;  i += s)  arr.push(i);
+  }
+
+  lev  = !lev  ?  [1] :  !lev.length  ?  [lev]  :  lev;
+  slip = !slip ?  [0] :  !slip.length ?  [slip] :  slip;
+
+  obj = { ...alloc,  lev,  slip, ...(cond && { cond }) };
+
+
+  // 3.Generate all combinations of botName values that form a total of 100
+  //   and that satisfy `obj.cond` (if any); and for all their levs and slips.
+  const shouldTotal100 = true;
+  var { lev: levs,  slip: slips,  cond,  ...alloc } = obj;
+  var arr = [];
+
+  for (var lev of levs) {
+    for (var slip of slips) {
+      decombinatorialize({}, Object.keys(alloc));
+    }
+  }
+
+  function decombinatorialize(alc, keys) {
+    if (keys.length) {
+      let [ k, ...ks ] = keys;
+      for (let v of alloc[k])  decombinatorialize({ ...alc, [k]: v },  ks);
+    }
+    else {
+      let sum = Object.keys(alc).reduce((sum, k) => sum + alc[k], 0);
+      if ((!shouldTotal100 || sum == 100)  &&  (!cond || cond(alc))) {
+        arr.push({ ...alc, ...(lev!=1&&{lev}), ...(slip&&{slip}) });
+      }
+    }
+  }
+
+
+  // 4.Convert these single-allocation Objects into single-allocation Strings.
+  arr = arr.map(o => Object.keys(o) .map(k => k + o[k]) .join(' '));
+
+  return arr;
+}
+
+
+
+
+/**
+ *
+ */
+function preprocessCalcs(opt, datas, f) {
+  var { botNames, bots, calcs, days, factors, cSums } = datas;
+
+
+  // 1) Replace calc shorthand-strings by calc objects with functions.
+  var allocNr = 0;
+  calcs = calcs.reduce((arr, calc) =>
+    arr.concat( typeof calc == 'string'  &&  calc  &&
+                ( allbotsSpecToCalcs(calc, opt, datas, f) ||
+                  multiAllocSpecToCalcs(calc, ++allocNr, datas) )  || calc),
+    []);
+
+
+  // 2) Replace empty calcs by a separator.
+  calcs = calcs .map(o => o || { empty: true });  // Falsy => separator.
+  cSums = cSums .map(o => o || { empty: true });
+
+
+  // 3) Give all calcs a unique name, fix invalids/duplicates, prevent conflicts
+  //    with var names used in `processRowCalcs()` (see comments there for why),
+  //    and tag empty calcs (if not tagged so before).
+  let calcNames = [];
+  for (let i in calcs) {
+    let calc = calcs[i];
+    if (calc.empty || !calc.func)  calc.empty = true;
+    else {
+      if ( calc.name)  calc.name = calc.name.replace(/^\d+|[^a-z0-9_$]/gi,'');
+      if (!calc.name)  calc.name = `calc${ +i + 1 }`;
+      while ([...calcNames, ...botNames,
+              'calcs', 'botNames', 'bots', 'days', 'factors',
+              'c', 'o', 'allNames', 'calc', 'func', 'name',
+             ].includes(calc.name))  calc.name += `_`;
+    }
+    calcNames.push(calc.name);
+  }
+
+
+  // 4a) Get the keys of last 12 months' perform.-reports (e.g. 2021-09) in bots,
+  // 4b) Also add a key for each yearYY+monthMM, for each full month included
+  //     in `days` (from `fromDay`).
+  // With this, we can extend opt.pSums with info for them, so that a
+  // performance-summary column will be shown for each fully visible month.
+  var pSumYMs = uniq([
+    ...Object.keys(bots[0]||{}) .filter(k => /^ym\d{4}$/.test(k)),
+    ...days.filter(d => `${d}`.endsWith('02'))  // Perf of month's day 1 is data..
+           .map(d => 'ym'+`${d}`.slice(0,4) )   // ..point of day2 at 00:00 UTC.
+  ]).sort();
+  pSumYMs.forEach(ymYYMM => {
+    let s = ymYYMM.replace(/ym(..)(..)/,'$1-$2')  // E.g. '21-09'.
+    opt.pSums.push({ name:   ymYYMM,                head:      'p-'+s,
+                     descr: 'performance in 20'+s,  descrMini: 'perf 20'+s });
+  });
+
+
+  Object.assign(datas, { calcs, pSumYMs, cSums });
+}
+
+
+
+
+/**
+ * Execute the calculations specified in `opt.calcs`, for each day in `days`;
+ * and add the resulting values as a new array to `factors`.
+ * Note: calcs may output other values than factors too).
+ *
+ * + For each day:
+ *   Assign each bot's factor for day `c` to a variable with the bot's name.
+ *   Then the calc-functions can simply use e.g. `cat*0.5` etc.; (so they
+ *   don't need to accept an Object and use its props, like `o.cat*0.5`).
+ *
+ * + In addition, create useful functions based on these variables' names,
+ *   so the calc-functions can simply use e.g. `cat_prod(7)` to get cat's
+ *   7-days-total factor up to+incl `c`; and other functions (see code).
+ *
+ * + Also, do the same for calcs' values: make a var with the calc's name.
+ *   Then each calc can use calculated values from: the previous days
+ *   of all other calcs, and from: the current day of all calcs listed
+ *   before it in data.calcs.
+ */
+function processRowCalcs(opt, datas, f) {
+  var { botNames, bots, calcs, days, factors } = datas;
+
+  var calcsNE = calcs.filter(calc => calc.name);  // Non-empty calcs.
+
+  calcsNE.forEach(calc => factors[calc.name] = []);
+  var c = 0;
+
+
+  // Make utility functions for use in calc-functions.
+  var o = {
+    lev : (lev , factor) => (factor - 1) * lev      + 1,
+    slip: (slip, factor) => (factor - 1) * (1-slip) + 1,//E.g. slip 0.0005=0.05%.
+  };
+
+
+  // Make a generator for bot/calc-name based functions, for use in calc-funcs.
+  function generateFor(name) {
+    o[name+'_prev'] = (n = 1) => { //–>cat_prev(0)==cat;  cat_prev(1)==cat[c-1]
+      return factors[name][c - Math.abs(n)] || NaN;
+    };
+    o[name+'_prod'] = (n = 1) => {  // cat_prod(1) == cat;
+      var v = 1;                    // cat_prod(3) == cat*cat_prev()*cat_prev(2)
+      for (let i = Math.abs(n)-1;  i>=0;  i--)  v *= factors[name][c-i] || NaN;
+      return v;
+    };
+    o[name+'_wprod'] = (n = 1, w = emaWeightDefault) => {
+      // Exponentially-weighted product/Moving Average.
+      // E.g.: cat_wprod(3)
+      //    = (1+(cat-1)/w^0) * (1+(cat_prev()-1)/w^1) * (1+(cat_prev(2)-1)/w^2)
+      n = Math.abs(n);
+      var v    = 1;
+      var wNow = 1;
+      for (let i = 0;  i < n;  i++) {
+        v    *= 1 + ((factors[name][c-i] || NaN) - 1) / wNow;
+        wNow *= w;
+      }
+      return v;
+    };
+    updateFor(name);
+  }
+
+  function updateFor(name) {
+    o[name] = factors[name][c] || NaN;
+  }
+
+
+  // Move the above vars and functions (after generating them) out of `o`
+  // and into the current scope by eval'ing them.
+  var allNames = [...bots, ...calcsNE].map(bc => bc.name);
+  allNames.forEach(name => generateFor(name));
+  try {  eval(`var {${ Object.keys(o).join(',') }} = o;`)  }  catch(e) {}
+
+  for (c in days) {
+    // Update the bots' vars before processing a new day. (Note: their funcs..
+    botNames.forEach(name => updateFor(name));            // ..remain the same).
+    try {  eval(`var {${ botNames.join(',') }} = o;`)  }  catch(e) {}
+
+    // Execute each calc's func. Give it access to vars above by eval'ing it too.
+    // + If func uses a NaN in its calculations, it returns NaN, which we make 0.
+    for (let calc of calcsNE) {
+      try {
+        eval(`var func = ${ calc.func.toString() }`);
+        factors[calc.name][c] = +(+func(o) || 0).toFixed(6);
+
+        // Update this calc's var now, so next calcs can access its new value.
+        updateFor(calc.name);
+        eval(`var {${ calc.name }} = o;`);
+
+      } catch(e) {
+        factors[calc.name][c] = 0;
+      }
+    };
+  }
+}
+
+
+
+
+/**
+ * Execute the calculations for performance-summary cells.
+ * Some values are already given in `bots.data`, e.g. `.y1`, `.ym2109` etc.
+ * Here we calculate the remaining ones: bots' `.ym*` from over 12 months ago,
+ * and all such perf-summary for `calcs` (that don't have `.pSums` set to falsy).
+ */
+function processColCalcs(opt, datas, f) {
+  var { bots, days, calcs, factors } = datas;
+  var iA_ago12M = indexLastDayTagMinusXMonthsPlus1D(12);
+  var iA_ago3M  = indexLastDayTagMinusXMonthsPlus1D( 3);
+  var iA_ago1M  = indexLastDayTagMinusXMonthsPlus1D( 1);
+  var psNames = opt.pSums.map(o => o.name);
+
+
+  for (let bot of bots) {
+    for (let psName of psNames)  {
+      if (!bot[psName]) {       // (Note: it was verified that NapBots-provided..
+        calcPSum(bot, psName);  // ..pSums equal what this code would calculate).
+      }
+    }
+  }
+
+  for (let calc of calcs) {
+    if (calc.pSums === undefined)  calc.pSums = true;
+    if (!calc.name || !calc.pSums)  continue;
+    for (let psName of psNames) {
+      calcPSum(calc, psName);
+    }
+  }
+
+
+  function indexLastDayTagMinusXMonthsPlus1D(n) {
+    // E.g. if the last day-tag in `days` is 210309, then for n=3:
+    // returns the index of 201210, or -1 if that day-tag is not there.
+    var lastDay = days.slice(-1)[0];
+    var day = f.dayTagMinusXMonthsPlus1D(lastDay, n);
+    return days.findIndex(d => d == day);
+  }
+
+
+  function calcPSum(rowObj, psName) {
+    var facs = factors[rowObj.name];
+    var fac  = 0;  // If any data is absent, make cellDraw() show a no-data cell.
+
+    if      (psName=='v' )  fac = pSumFromTo(facs,         0,  days.length,  1);
+    else if (psName=='y1')  fac = pSumFromTo(facs, iA_ago12M,  days.length);
+    else if (psName=='m3')  fac = pSumFromTo(facs, iA_ago3M ,  days.length);
+    else if (psName=='m1')  fac = pSumFromTo(facs, iA_ago1M ,  days.length);
+    else if (psName=='w1')  fac = pSumFromTo(facs, days.length -7, days.length);
+    else if (/^ym\d{4}$/.test(psName)) {
+      let yymm = psName.slice(2);  // Note: perf. of day 1 of month is measured..
+      let iA = days.findIndex(d => d == yymm + '02');  //..<–at 00:00UTC of day2.
+      let iZ = iA + days.slice(iA + 1).findIndex(d => `${d}`.endsWith('02')) + 1;
+      if (iZ <= iA)  iZ = days.length;  // For if next month's day 2 isn't found.
+      fac = pSumFromTo(facs, iA, iZ);
+    }
+    else if (psName == 'dd'  )  fac = ddSinceXDaysAgo(facs, 365);
+    else if (psName == 'ddv' )  fac = ddSinceXDaysAgo(facs, days.length);
+    else if (psName == 'ddcv')  fac = ddSinceXDaysAgo(facs, days.length, false);
+    else if (psName == 'dd1v')  fac = Math.min(1, ...facs.filter(v => v));
+
+    rowObj[psName] = +(fac.toFixed(6));  // Store the result in e.g. `cat.y1`.
+  }
+
+
+  function pSumFromTo(facs, iA, iZ, factorIfZero = 0) {
+    // Arg `iA`: index of first day to include, < 0 if absent.
+    // Arg `iZ`: index after last day to include.
+    // If asked to calculate from before fromDay, it will make a 'no-data' cell.
+    // If some factors (e.g. earliest data) are no-data (falsy), it treats them:
+    //   by default: as no-data, resulting in a no-data answer (=0), or
+    //   if `factorIfZero==1`: as 1 (:for calc'ing perf of days in current view).
+    if (iA < 0)  return 0;
+    var fac = 1;
+    for (var i = iA;  i < iZ - 1;  i++)  fac *= facs[i] || factorIfZero;
+    fac *= facs[iZ-1]||1;  // Allow that the last day's data hasn't arrived yet.
+    return fac;
+  }
+
+
+  function ddSinceXDaysAgo(facs, n, getMax = true) {
+    // If asked to calculate from before fromDay, answers falsy (i.e. 'no-data').
+    // If some factors are no-data, it treats them as 1.
+    // If `getMax` is truthy, returns the max drawdown;
+    // or else returns the current drawdown (=decrease-factor since max perf.).
+    let iZ = days.length;
+    let iA = iZ - n;
+    if (iA < 0)  return 0;
+    let pf    = 1;  // Accumulated performance-factor, at each step in the loop.
+    let maxPf = 1;
+    let maxDD = 1;
+    for (let i = iA;  i < iZ;  i++) {
+      pf *= facs[i] || 1;
+      if (pf > maxPf)  maxPf = pf;
+      else  maxDD = Math.min(maxDD, pf / maxPf);
+    }
+    return getMax ?  maxDD :  pf / maxPf;
+  }
+}
+
+
+
+
+/**
+ * Create the declaration-Object for how to draw columns, rows, and cells.
+ */
+function makeConf(opt, datas, funcs) {
+  var conf = {};
+
+  var { col, row, cell, sep, bord } = opt;
+  var { botNames, bots, calcs, days, pSumYMs, factors, cSums, version } = datas;
+  var f = funcs;
+  var c_name = !calcs.length ?  col.name :  col.nameC;
+
+
+  // Declare which columns to show and in what order. Keys are the column names;
+  // each can be repeated multiple times as a group of 'sub-columns', based on a
+  // given Array; and can also be shown more times with as key '<key>_<num>'.
+  conf.cols = {
+    name  :     c_name,
+    day   : _(col.day,  { repeat:    days      }),
+    name_2: _(col.name, { sepAround: sep.name2 }),
+    type  :   col.type,
+    info  :   col.info,
+    ...opt.pSums.reduce((o, x) => (o[x.name] = // For perf-1Y, perf-2021-02, etc.
+        _(col.pSum,  x.name == 'v'    ? { sepAfter : sep.pSumV  } :
+                     x.name == 'dd'   ? { sepBefore: sep.pSumDD } :
+                     x.name == 'dd1v' ? { sepAfter : sep.pSumDD } : {}), o), {}),
+    namBot: _(  c_name, { sepBefore: sep.name2 }),
+    cSum  : _(col.pSum, { repeat:    cSums,  sepEmpty: sep.calcGroup }),
+  };
+
+
+  // Declare which rows to show and in what order.
+  conf.rows = {
+    head  :   row.head,
+    bot   : _(row.bot , { repeat:  bots,   sepAfter: !calcs.length ?  0 :
+                                                     sep.botsCalcs }),
+    calc  : _(row.calc, { repeat:  calcs,  sepEmpty: sep.calcGroup }),
+  };
+
+
+  // Declare what each cell type should show.
+  // Each `column_row()` defines how to draw cells at the intersection of a
+  // col/row-type (or -group-type). Cells inside col/row-groups are in addition
+  // addressed by their sub-row and sub-column number (`r,c`) in these groups.
+  // + Argument `o` has properties:
+  //   r (sub-row number), c (sub-col number).
+  conf.cells = {
+    name_head: o => _(cell.head, {
+      text:      'name',
+      tooltip:   'bot name, or calculation/allocation name',
+    }),
+    name_bot : o => {
+      let bot = bots[o.r];
+      return _(cell.name, {
+        text:    bot.name,
+        tooltip: `'${ opt.namesInFull[bot.name] || bot.name }'  ` +
+                 `(${ f.botIDNice(bot.id) })`,  /// url:f.botIDToURL(bot.id),
+      })},
+    name_calc: o => _(cell.name, {
+      text:      calcs[o.r].name,
+      ///tooltip:   calcs[o.r].name,
+    }),
+
+    day_head:  o => {
+      let day  = days[o.c];
+      let day0 = f.dayTagMinus1D(day);
+      return _(cell.head, {
+        text:    opt.dayMinus1 ?  day0 :  day,
+        onclick: `copyFactorsFromDayNr(${ o.c },evt)`,
+        tooltip: `performance during ` +
+                 `${ f.dayTagWeekDay(day0, 'medium') } ` +
+                 `${ f.dayTagInFull (day0) },\n` +
+                 `measured at ${ f.dayTagInFull (day ) } 00:00 UTC\n` +
+                 '(click to copy, or ctrl/shift-click)',
+        ///borders: bord.day(days, o.c, 1),
+      })},
+    day_bot:   o => cellPerf(bots ,                  null, o),
+    day_calc:  o => cellPerf(calcs, calcs[o.r].factorHigh, o),
+
+    type_head: o => _(cell.head, {
+      text:      'type',
+      tooltip:   'strategy type and bot signal frequency',
+    }),
+    type_bot : o => {
+      let type = Object.keys(opt.typesToNames)
+                  .find(k => opt.typesToNames[k].includes(bots[o.r].name));
+      return _(cell.type, {
+        text:    type == 'W' ?  'w' :  type,
+        tColor:  opt.typesToRgb [type] || '',
+        tooltip: opt.typesInFull[type] || '',
+      })},
+
+    info_head: o => _(cell.head, {
+      text:      'info',
+      moreText:  appHeaderText,
+      tooltip:   'bot strategy code, or calculation/allocation description',
+    }),
+    info_bot : o => _(cell.infoBot, {
+      text:      bots[o.r].id,
+      url:       f.botIDToURL(bots[o.r].id),
+    }),
+    info_calc: o => _(cell.infoCalc, {
+      text:      calcs[o.r].descr,
+      ...(calcs[o.r].name.startsWith('alloc') && {  // Alloc descrs can be long,..
+        tooltip: calcs[o.r].descr,        // ..so make them readable via tooltip.
+      })
+    }),
+
+    // Add cell-draw funcs for each performance-summary col type: y1, m3, etc.
+    ...opt.pSums.reduce((obj, psInf) => (
+      obj[psInf.name + '_head'] = o => _(cell.head, {
+          tx:      cell.head.tx * cell.head.txPSumMult,
+          text:    psInf.head,
+          tooltip: psInf.descr,
+        }),
+      obj[psInf.name + '_bot' ] = o => cellPSum(bots , o, psInf),
+      obj[psInf.name + '_calc'] = o => cellPSum(calcs, o, psInf),
+    obj), {}),
+
+    ///cSum_head: o => _(cell.head, {}),
+    ///cSum_bot:  o => _(cell.perf, {}),
+    ///cSum_calc: o => _(cell.perf, {}),
+  };
+
+
+  conf.cells.namBot_head = conf.cells.name_head;   // Col 'namBot' shows name-
+  conf.cells.namBot_bot  = conf.cells.name_bot;      // ..labels only for bots,
+  conf.cells.namBot_calc = o => calcs[o.r].pSums ?   // ..and certain calcs.
+                                conf.cells.name_calc(o) :  null;
+
+
+
+  // --- For showing a performance-factor cell for a bot or calc.
+  function cellPerf(rowObjs, factorHigh, o) {  // `rowObjs`: bots or calcs.
+    let rowObj = rowObjs[o.r];
+    let factor = factors[rowObj.name][o.c];
+    let descr  = rowObj.id || rowObj.descr;
+    return _(cell.perf, {
+      factor:  factor,
+      bgColor: f.factorToColor(factor, factorHigh || opt.factorHigh.d1),
+      borders: bord.day(days, o.c, factor),
+      tooltip: f.tooltipPerfStr(rowObj.name, descr, days[o.c], factor),
+    });
+  }
+
+  function cellPSum(rowObjs, o, pSumInfo) {
+    let psName = pSumInfo.name;   // E.g. 'y1', or 'ym2109'.
+    let rowObj = rowObjs[o.r];    // E.g. `bots.cat`.
+    let factor = rowObj[psName];  // E.g. `bots.cat.y1`.
+    if (factor === undefined)  return factor;    // If absent prop: draw nothing.
+    let factHi = opt.factorHigh[psName.slice(0,2)] ||  // slice: e.g. ym2109->ym.
+                 opt.factorHigh[
+                    psName      != 'v' ?  'm1' :
+                    days.length <=   7 ?  'w1' :  // 'v' => find factorHigh that..
+                    days.length <=  31 ?  'm1' :  // ..best fits the current..
+                    days.length <=  93 ?  'm3' :  // ..number of days in view.
+                    days.length <= 410 ?  'y1' :
+                    days.length <= 790 ?  'y2' : 'y3' ];
+    let descrRow = rowObj.id || rowObj.descr;
+    let descrCol = pSumInfo.descrMini;
+    return _(cell.pSum, {
+      factor:  factor,
+      text:    f.perfPreciFact2(factor),
+      bgColor: f.factorToColor(factor, factHi),
+      borders: bord.yymm(pSumYMs, psName, factor, opt),
+      tooltip: f.tooltipPerfStr(rowObj.name, descrRow, descrCol, factor),
+    });
+  }
+
+
+
+  // --- For showing an 'app-header' as extra text in the info-column header.
+  var appHeader = (txf, tyf, o) => _(cell.head, {
+    tx:       cell.infoBot.ty * txf,
+    ty:       cell.infoBot.ty * tyf,
+    fontSize: cell.infoBot.fontSize * 0.8,
+    ///tColor:  '#646464',
+    rotate:   0,  ...o
+  });
+
+  var appHeaderTip = (txf, tyf, coin, o) => appHeader(txf, tyf, {
+    tCss:    'cursor:pointer',
+    onclick: `copyTipAddress('${ coin }', '${ tips[coin].address
+              }', '${ tips[coin].network }')`,
+    tooltip: `Like this map?  🥰  Tip me plenty of ${ coin } at:\n` +
+             `${    tips[coin].address }` +
+             `  (${ tips[coin].network } network)\n↪ Click to copy`,  ...o
+  });
+
+  var appHeaderText = [
+    appHeader(2.5, 0.57, {
+      text:    'MapBots',  tCss:    'font-weight:bold',
+      tColor:  '#424242',  fontSize: cell.infoBot.fontSize * 0.95,
+      tooltip: mapDescr,
+      url:     opt.mapURL }),
+    appHeader(6.3, 0.57, {
+      text:    `v ${ version }`,
+      tooltip: `Data version ${ version.replace(
+                /^(\d\d)(\d\d)(\d\d)-(\d\d)(\d\d)z$/i, '20$1-$2-$3 $4:$5 UTC')}`,
+      url:     opt.dataURL }),
+    appHeader(11.25, 0.57, {
+      text:    '– Info',
+      tooltip: `MapBots: ${ mapDescr.replace(/\n/,' ')
+                          }.\nSee GitHub Readme for info.`,
+      url:     opt.repoURL }),
+    appHeaderTip( 6.30, 1.5, 'USDT', {  text: 'Tips: USDT,' }),
+    appHeaderTip(10.02, 1.5, 'BTC' , {  text: 'BTC,'        }),
+    appHeaderTip(11.70, 1.5, 'SOL' , {  text: 'SOL'         }),
+  ];
+
+
+
+  // --- Functions for interactivity that some cells have (like 'onclick')
+  //     (see also comment at codeForHTML()).
+  conf.code = [
+    /**
+     * Makes a botname\day-matrix of daily performance-factors, starting from
+     * day nr `c`, and puts it onto the clipboard. Adds a first row of day-tags
+     * as column-headers, and a first column of bot-names as row-labels.
+     * If Ctrl  is pressed, it omits bot-names.
+     * If Shift is pressed, it pads cells to equal length.
+     * If opt.dayMinus1 is true, it shows column headers like
+     *   '210101->' (meaning: the perf. was made during that day), and else like
+     *   '210102:0' (meaning: perf. measured at 00:00 UTC at start of day after).
+     */
+    function copyFactorsFromDayNr(c, evt) {
+      let allNames = [ ...botNames, ...calcs.map(calc=>calc.name).filter(s=>s) ];
+      let maxW0 = Math.max(...allNames.map(name => name.length));
+      let fColW = isBotNameCol => evt.shiftKey ? (isBotNameCol ? maxW0 : 8) : 0;
+      let cell00 =   (opt.dayMinus1 ?  'during' :  'at').padStart(fColW(1));
+      let fDay = d => opt.dayMinus1 ?  `${f.dayTagMinus1D(d)}->` :  `${d}:0`;
+      let fRow = (name, arr) =>
+        (evt.ctrlKey ? [] : [name])
+        .concat(arr.slice(c) .map(v => v || ''))
+        .map((v, i) => `${v}`.padEnd( fColW(i==0 && !evt.ctrlKey) ));
+      let matrix = [ fRow(cell00, days.map(fDay)) ]
+                    .concat( allNames.map(name => fRow(name, factors[name])) );
+      let s = matrix.map(a => a.join('\t')).join(NL);
+      navigator.clipboard.writeText(s);
+    },
+
+    function copyTipAddress(coin, address, network) {
+      navigator.clipboard.writeText(address);
+      alert(`Copied to clipboard: ${ coin } address` +
+            (coin == network ?  '' :  ` at ${ network } network:`) +
+            ` ${ address }. Nice! 😍`);
+    }
+  ];
+
+
+  return conf;
+}
+
+
+
+
+/**
+ * Execute the declaration of cols, subcols, rows, subrows, and cells.
+ */
+function drawConf(conf) {
+  var svg = '';
+  var { cols, rows, cells } = conf;
+
+  var isEmpty     = (obj, subNr      ) => obj.repeat  && obj.repeat[subNr].empty;
+  var emptyOrProp = (obj, subNr, prop) => obj [ isEmpty(obj, subNr)  &&
+                             obj.sepEmpty !== undefined ?  'sepEmpty' :  prop ];
+
+  var x = 0;
+  for (let [colK, col] of Object.entries(cols)) {
+    x += col.sepBefore || col.sepAround || 0;
+    for (let c in col.repeat||[0]) {
+      var y = 0;
+      for (let [rowK, row] of Object.entries(rows)) {
+        y += row.sepBefore || row.sepAround || 0;
+        for (let r in row.repeat||[0]) {
+          let s = `${ colK.replace(/_\d*$/, '') }_`+  // Ignore '_'+num at end;
+                  `${ rowK.replace(/_\d*$/, '') }`;   // get cell-handler func.
+          if (cells[s]  &&  !isEmpty(row, r)  &&  !isEmpty(col, c)) {
+            let o = cells[s]({ r, c });
+            let str = drawCell(o,  x, y,  col.w, row.h);
+            if (str)  svg += str + NL;
+          }
+          y += emptyOrProp(row, r, 'h');
+        }
+        y += row.sepAfter || row.sepAround || 0;
+      }
+      x += emptyOrProp(col, c, 'w');
+    }
+    x += col.sepAfter || col.sepAround || 0;
+  }
+
+
+  var code = !conf.code ?  '' :
+    '<script><![CDATA[' + NL +
+    conf.code
+      .map(f => f.toString().replace(/^ {4}(.*)$/gm, '$1'))  // Unindent.
+      .join(NL) + NL +
+    ']]></scrip'+'t>' + NL;
+
+  svg = `<svg xmlns="http://www.w3.org/2000/svg"` +
+        ` xmlns:xlink="http://www.w3.org/1999/xlink"` +
+        ` width="${ fixed2(x) }" height="${ fixed2(y) }"` +
+        ` font-family="Arial" style="cursor:default"` +
+        `>${ NL }` + svg + code + `</svg>`;
+
+  return svg;
+}
+
+
+
+
+/**
+ *
+ */
+function drawCell(o, x, y, w, h) {  // o: cell-specification object.
+  if (!o)  return '';
+  var interactivityAdded = false;
+
+  var svg = rect() +         // Rect: adds background color, if any.
+            borderLines() +
+            text(o) +
+            (o.moreText || []) .map(oMore => text( _(o, oMore) )) . join('');
+
+  return svg;
+
+
+  function rect() {  // Note: this updates `o`.
+    if (!o.bgColor)  return '';
+    let s = `<rect` +
+            ` x="${      fixed2(x) }"` +
+            ` y="${      fixed2(y) }"` +
+            ` width="${  fixed2(w) }"` +
+            ` height="${ fixed2(h) }"` +
+            ` fill="${   o.bgColor }"` +
+            onclickStr(o) +
+            `>${     tooltipStr(o) }`  +
+            `</rect>`;
+    s = wrapInLink(s, o);
+    emptyInteractivityStrs();
+    return s;
+  }
+
+  function onclickStr(o) {
+    return !o.onclick ?  '' :  ` onclick="${ o.onclick.toString() }"`;
+  }
+
+  function tooltipStr(o) {
+    return !o.tooltip ?  '' :  `<title>${ o.tooltip }</title>`;
+  }
+
+  function emptyInteractivityStrs() {  // Makes that consecutive rect/text calls..
+    o = _(o,  { tooltip:'', onclick:'', url:'' });    // <- ..won't re-add these.
+    interactivityAdded = true;
+  }
+
+  function borderLines() {
+    return  !o.borders ?  '' :  o.borders
+            .map(b => {
+              if (b.side == 'left' || b.side == 'right')  {
+                let bx = b.side == 'left' ?  x :  fixed2(x + w - w * b.w);
+                let bw = fixed2(w * b.w);
+                return line(bx, y,  bw, h,  b.color);
+              }
+              else return '';
+            })
+          .join('');
+  }
+
+  function line(x, y, w, h, color) {
+    return !w || !h ?  '' :
+           `<rect x="${ fixed2(x) }" y="${      fixed2(y) }"` +
+           ` width="${  fixed2(w) }" height="${ fixed2(h) }"` +
+           ` fill="${ color }"` +
+           ` style="pointer-events:none"` +  // To not block parent's tooltip.
+           `/>`;
+  }
+
+  function wrapInLink(s, o) {
+    return !o.url ? s : `<a xlink:href="${ o.url }" target="_blank">${ s }</a>`;
+  }
+
+  function text(o) {  // `o` is a modified version of the original drawCell arg!
+    if (!o.text)  return '';
+    let style = [
+        interactivityAdded  &&  !o.onclick  && !o.tooltip  && !o.url ?
+          'pointer-events:none' :  '',  // To not block <rect>'s tooltip etc.
+        o.tCss,
+      ].filter(x => x).join(';');
+    let tx = fixed2(x + o.tx);
+    let ty = fixed2(y + o.ty);
+    let s = `<text` +
+            ` x="${ tx }"` +
+            ` y="${ ty }"` +
+            ` fill="${ o.tColor }"` +
+            ` font-size="${ fixed2(o.fontSize) }"` +
+            ( !o.rotate ? '' : ` transform="rotate(${o.rotate} ${tx} ${ty})"`)+
+            ( !style    ? '' : ` style="${ style }"` ) +
+            onclickStr(o) +
+            `>${ tooltipStr(o) }` +
+            `${ o.text }</text>`;
+    s = wrapInLink(s, o);
+    emptyInteractivityStrs();
+    return s;
+  }
+}
+
+
+
+
+/**
+ * Returns the conf.code Array as a new Object that can be merged with `document`.
+ * Why: The functions that were added in the SVG-<script> must be added to the
+ * HTML-document too. Because when inserting an SVG-string in a webpage,
+ * the SVG-<script> does not seem to be run. (Though it does run when saving
+ * the SVG-string to a file).
+ */
+function codeForHTML(conf) {
+  return conf.code.reduce((o, f) => ({ [f.name]: f, ...o }), {});
+}
+
+
+
+
+/**
+ *
+ */
+async function makeMap(userOpt) {
+  keepData  = null;
+  userOpt   = { ...userOptDefault, ...userOpt };
+  var opt   = extendOpt(userOpt);           // Build options Obj for use in code.
+  var funcs = helperFuncs(opt);             // Define utility functions.
+
+  var data  = await fetchJSON(opt.dataURL); // Get NapBots latest data.
+  var datas = prepDatas(opt, data);         // Convert data for use in this code.
+
+  preprocessCalcs(opt, datas, funcs);       // Prepare for calculating.
+  processRowCalcs(opt, datas);              // Calculate derived data rows.
+  processColCalcs(opt, datas, funcs);       // Calculate their summary-columns.
+
+  keepData = Object.keys(datas).reduce( // For pot. reuse by 'Download JSON'.
+    (o, k) => (['version','bots','calcs','days','factors'].includes(k)  &&
+               (o[k] = datas[k]),  o),  {});
+
+  var conf  = makeConf(opt, datas, funcs);  // Make declaration of what to draw.
+
+  var svg   = drawConf(conf);               // Draw SVG based on the declaration.
+  var code  = codeForHTML(conf);            // Support onclick listeners.
+
+  $('svgCont').innerHTML = NL + svg + NL;   // Insert SVG into web page.
+  Object.assign(document, code);
+}
+
+
+var keepData;
+
+
+
+
+
+// ----- HTML handling functionality -----
+
+
+function putOptIntoInput(opt) {
+  $('optTA').value = JSON.stringify(opt, null, 2);
+}
+
+
+function getOptFromInput() {  // Returns the Object, or false on error.
+  try {
+    return JSON.parse( $('optTA').value );
+  }
+  catch(err) {
+    showMsg('Error', 'options parsing error: ' + err);
+    return false;
+  }
+}
+
+
+function initNavigation(opt) {
+  window.history.replaceState(opt, '', window.location);
+  window.onpopstate = function(event) {
+    opt = event.state;
+    putOptIntoInput(opt);
+    goMakeMap(opt);
+  };
+}
+
+
+function applyOpt(opt) {
+  opt = opt || getOptFromInput();
+  if (opt === false)  return;
+  goMakeMap(opt);
+  window.history.pushState(opt, '', permalinkForOpt(opt));
+}
+
+
+function applyExampleOpt(nr) {
+  var opt = clone(exampleOpts[nr] || {});
+  putOptIntoInput(opt);
+  applyOpt(opt);
+  return false;  // Prevent a full page-reload caused by clicking on <a href>.
+}
+
+
+/**
+ * Adds example `userOpt`-options, encoded into permalinks.
+ */
+function addExamplePermalinks() {
+  var el = $('exampleLinks');
+  el.innerHTML = '';
+  var addLink = (opt, i) =>  el.innerHTML +=
+    `<a class="exampleLink" href="${ permalinkForOpt(opt) || '?' }"` +
+    ` onclick="return applyExampleOpt(${ i })"` +
+    (i == -1 ?  ' title="(Ctrl+Shift+Enter)"' :  '') +
+    `>` +
+    (i == -1 ?  'reset' :  `${ !i ? 'Example options ' : '' }${ i + 1 }`) +
+    `</a>`;
+  exampleOpts.forEach(addLink);
+  addLink({}, -1);  // Add link to reset to default options.
+}
+
+
+function permalinkForOpt(opt) {
+  var obj = Object.entries(opt)
+    .reduce((obj, [k, v]) => {
+      if (v !== undefined)  obj[k] = JSON.stringify(v);
+      return obj;
+    }, {});
+
+  var params = new URLSearchParams(obj) + '';
+  var url = `${ mapURL }${ params? '?': '' }${ params }`;
+  return url;
+}
+
+
+function copyLink() {
+  var opt = getOptFromInput();
+  if (opt === false)  return;
+  var url = permalinkForOpt(opt, true);
+  navigator.clipboard.writeText(url);
+  showMsg('Info', `Copied to clipboard:\n${ url }`, 1);
+  showMsg('Info', `Copied permalink to clipboard`, 2);
+}
+
+
+function downloadFile(data, ext) {
+  var type    = ext == 'json' ?  'text/json;charset=utf-8' :
+                ext == 'svg'  ?  'image/svg+xml;charset=utf-8' :  '';
+  var el      = document.createElement('a');
+  el.href     = URL.createObjectURL(  new Blob([ '', data ], { type })  );
+  el.download = `mapbots-${ new Date().toISOString().slice(0,16)
+                           .replace('T', '-') .replace(':', '')  }z.${ ext }`;
+  document.body.appendChild(el);
+  el.click();
+  document.body.removeChild(el);
+}
+
+
+function downloadSVG() {
+  var el = $('svgCont').getElementsByTagName('svg')[0];
+  if (!el)  return showMsg('Error', 'Map has not been generated yet');
+  downloadFile(el.outerHTML, 'svg');
+}
+
+
+function downloadJSON() {
+  if (!keepData)  return showMsg('Error', 'No map data available yet');
+  downloadFile(JSON.stringify(keepData), 'json');
+}
+
+
+/**
+ * Gets options (if any) from URL parameters, and shows them in the textarea.
+ */
+function loadOptFromURL() {
+  var opt = {};
+  var params = new URLSearchParams(window.location.search);
+  for(var [key, val] of params.entries()) {
+    try {
+      if (val)  opt[key] = JSON.parse(val);
+    }
+    catch(err) {
+      try { opt[key] = JSON.parse(val.replace(/\/"/g,'\\"')) } //Patch some URLs.
+      catch(err) {
+        showMsg('Error', `URL parameter error for '${ key }=${ val }': ` + err);
+      }
+    }
+  }
+
+  putOptIntoInput(opt);
+  return opt;
+}
+
+
+function showMsg(type, msg, where = 3) {  // `where`= 1:console, 2:html, 3:both.
+  if (   where%2  && msg)  console.log((type ?  `${type}: ` :  '')  +  msg);
+  if (~~(where/2)) {
+    if (type == 'Done') {
+      if ($('msg').innerHTML.replace(/<br>\n?/gi, '\n').trim() == msg.trim()) {
+        $('msg').innerHTML = '';
+      }
+    }
+    else {
+      $('msg').innerHTML =
+        (type  &&  type != 'Info' ?  `${type}: `  : '') +
+        msg.replace(/\n/g, '<br>\n') +
+        (!$('svgCont').innerHTML.trim() ?  ('<br><br><br>\n') :  '');
+    }
+  }
+}
+
+
+
+function scrollLR(lr = 1) {  // Scroll fully right (1) or left (-1).
+  window.scroll({ left: lr * 1e9,  behavior: 'smooth' });
+
+  if (document.activeElement == $('optTA')  &&  lr > 0) {
+    $('scrollR').focus();  // Unfocus textarea to make PgUp work on the page.
+  }
+}
+
+
+
+function addKeyboardListeners() {
+  function act(ev, f, ...args) { f(...args); ev.preventDefault(); return false }
+
+  // Ctrl+Home/End scrolls fully left/right.
+  document.addEventListener('keydown', scLR);
+  document.addEventListener('keyup'  , scLR);
+  function scLR(ev) {
+    if (ev.ctrlKey  &&  ev.key == 'Home' )  return act(ev, scrollLR, -1);
+    if (ev.ctrlKey  &&  ev.key == 'End'  )  return act(ev, scrollLR,  1);
+  }
+
+  // Ctrl+Enter applies the options that are currently in the textarea.
+  // Ctrl+Shift+Enter resets the map to using no custom options.
+  document.addEventListener('keydown', ev => {
+    if (ev.ctrlKey  &&  ev.key == 'Enter') {
+      return !ev.shiftKey ?  act(ev, applyOpt) :
+                             act(ev, applyExampleOpt, -1);
+    }
+  });
+
+  // In textarea: Tab inserts two spaces instead of moving focus out of textarea.
+  // (But Shift+Tab still allows moving out).
+  const tabSize = 2;
+  $('optTA').addEventListener('keydown', function(ev) {
+    if (!ev.shiftKey  &&  ev.key == 'Tab')  return act(ev, () => {
+      var start  = this.selectionStart;
+      var end    = this.selectionEnd;
+      this.value = this.value.substr(0, start) + ''.padStart(tabSize) +
+                   this.value.substr(end);
+      this.selectionStart = this.selectionEnd = start + tabSize;
+    });
+  });
+}
+
+
+
+async function goMakeMap(userOpt, loadedFromURL = false) {
+  if (loadedFromURL) {  // Don't autoexecute if calcs given via URL contain code.
+    for (calc of userOpt.calcs || []) {
+      if (typeof calc == 'object'  &&  calc.func  ||
+          typeof calc == 'string'  &&  calc.includes('cond')) {
+        $('svgCont').innerHTML = '';
+        showMsg('Info', 'The options from the URL contain executable code.\n' +
+                        'Please check below and <b>click Apply ' +
+                        '(Ctrl+Enter)</b> if you trust it.');
+        $('applyOpt').focus();  // Focus Apply so you can also just press Enter.
+        return;
+      }
+    }
+  }
+
+  const msg = 'Calculating...';
+  showMsg('Info', msg);
+  await makeMap(userOpt);
+  showMsg('Done', msg);
+}
+
+
+
+
+/**
+ *
+ */
+async function main() {
+  $('infoLink').href = repoURL;
+  addKeyboardListeners();
+  addExamplePermalinks();
+
+  var opt = loadOptFromURL();
+  initNavigation(opt);
+
+  await goMakeMap(opt, true);
+}
+
+
+main();
+
+</script>
+</html>
