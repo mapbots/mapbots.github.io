@@ -1,16 +1,5 @@
 # [Mapbots](https://mapbots.github.io): Auto-updating, programmable map of NapBots' daily performances.
 
-_“Because we didn’t come here to win small”_
-&nbsp; 🐵 –> 🌔 !
-
-
-## Getting started
-
-Load and study the example configurations at [mapbots.github.io](https://mapbots.github.io).
-They are self-explanatory and should be easy to modify.
-
-
-## Basic info
 
 ### Overview
 
@@ -25,6 +14,35 @@ Every hour, my agent in the cloud runs
 which merges and massages the latest data from NapBots, and uploads this at
 mapbots/data/[strats.json](https://raw.githubusercontent.com/mapbots/data/main/strats.json).
 The Mapbots app builds on that data.
+
+Load and study the example configurations at [mapbots.github.io](https://mapbots.github.io).
+They are self-explanatory and should be easy to modify.
+
+
+### Basic info
+
+- Bots are named by maximum-four-letter abbreviations.
+  This makes them consistent to use as variable names in the `calcs`.
+  For example: `'cat'`, `'lion'`, `'hors'` (not horsE), etc.
+  - NapBots gave these **animal names** to their bots in 2021.
+    But now they've given different names to their bots again, and they
+    may do so again; so here we just keep the cute names.
+    Mapbots shows the bots' permanent ‘strategy-code’ identifiers too.
+- Daily-performance values are shown in **tooltips**
+  that appear when you mouse over the colored cells.
+  Most other cells have explanatory tooltips too.
+- Day-performance column headers show **date tags** like `'210801'`,
+  which is shorthand for `'2021-08-01'`.
+- Performance-summary columns (right part of map) show **performance factors**
+  ([‘fold changes’](https://en.wikipedia.org/wiki/Fold_change)) rather than
+  percentages. This is more intuitive for summarizing large,
+  crypto-size wins and losses.
+
+- Other features: creating **permalinks**, downloading as **image**,
+  copying **TSV data** (click on column headers), hotkeys, etc.
+  You will find it all on the map.
+  For more info, check comments in the [source code](index.html).
+
 
 ### Customized calculations: `calcs`
 
@@ -63,32 +81,7 @@ Among the many customization options (incl. sizes, colors, ordering),
   Note: the grid of cell values is calculated column-by-column, then row-by-row.
 
 
-### Further info:
-
-- Bots are named by maximum-four-letter abbreviations.
-  This makes them consistent to use as variable names in the `calcs`.
-  For example: `'cat'`, `'lion'`, `'hors'` (not horsE), etc.
-  - NapBots gave these **animal names** to their bots in 2021.
-    But now they've given different names to their bots again, and they
-    may do so again later, so here we just keep the cute names.
-  The bots' more permanent ‘strategy-code’ identifiers are shown too.
-- Daily-performance values are shown in **tooltips**
-  that appear when you mouse over the colored cells.
-  Most other cells have explanatory tooltips too.
-- Day-performance column headers show **date tags** like `'210801'`,
-  which is shorthand for `'2021-08-01'`.
-- Performance-summary columns (right part of map) show **performance factors**
-  ([‘fold changes’](https://en.wikipedia.org/wiki/Fold_change)) rather than
-  percentages. This is more intuitive for summarizing large,
-  crypto-size wins and losses.
-
-- Other features: creating **permalinks**, downloading as **image**,
-  copying **TSV data** (click on column headers), hotkeys, etc.
-  You will find it all on the map.
-  For more info, check comments in the [source code](index.html).
-
-
-## About
+### About
 
 Mapbots was created for personal use by a NapBots user,
 who is *not* affiliated with NapBots.
@@ -106,7 +99,7 @@ found on the [map](https://mapbots.github.io).
 🥰
 
 
-## License
+### License
 
 [AGPL-3.0](LICENSE.md).
 This means you can use and modify the code, but you must share those

@@ -1573,7 +1573,7 @@ function makeConf(opt, datas, funcs) {
 
   var appHeaderText = [
     appHeader(2.5, 0.57, {
-      text:    'MapBots',  tCss:    'font-weight:bold',
+      text:    'Mapbots',  tCss:    'font-weight:bold',
       tColor:  '#424242',  fontSize: cell.infoBot.fontSize * 0.95,
       tooltip: mapDescr,
       url:     opt.mapURL }),
@@ -1583,11 +1583,11 @@ function makeConf(opt, datas, funcs) {
                 /^(\d\d)(\d\d)(\d\d)-(\d\d)(\d\d)z$/i, '20$1-$2-$3 $4:$5 UTC')}`,
       url:     opt.dataURL }),
     appHeader(11.25, 0.57, {
-      text:    '– Info',
-      tooltip: `MapBots: ${ mapDescr.replace(/\n/,' ')
+      text:    '– Info,',
+      tooltip: `Mapbots: ${ mapDescr.replace(/\n/,' ')
                           }.\nSee GitHub Readme for info.`,
       url:     opt.repoURL }),
-    appHeaderTip(6.30, 1.5, 'SOL', { text: 'Tips: SOL' }),
+    appHeaderTip(13.25, 0.57, 'SOL', { text: 'Tips' }),
   ];
 
 
