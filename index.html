@@ -198,8 +198,13 @@ const rgbEmpty = '#f4f4f4';  // For 'no data' cells.
 
 
 const factorHighDefault = {  // Default values for factorHighs, per timespan.
-  d1: 1.1,  w1: 1.3,  m1: 1.55,  m3: 1.75,  y1: 6,  y2: 12,  y3: 24,  ym: 1.55,
-  dd: 3,  ema: 1.15,
+  d1: 1.1,   d3: 1.1,
+  w1: 1.3,   w2: 1.35,  w3: 1.45,
+  m1: 1.55,  m2: 1.55,  ym: 1.55,
+  m3: 1.75,  m6: 2,
+  y1: 6,     y2: 12,    y3: 24,
+  dd: 3,
+  ema: 1.15,
 };
 
 const emaWeightDefault = 1.35;  // How fast EMA-weight shrinks in `_wprod()`.
@@ -211,11 +216,14 @@ const perfDayTypesToBorders = {            // (lineWidth = w * cellWidth).
   x : { side: 'right',  color: '#fbfbfb',  w: 0.05  }  // For no-data cells.
 };
 
-const pSumTypesToBorders =  // Reuse day-cells' y1/m3/x borders, but adjust for..
-  Object.keys(perfDayTypesToBorders).reduce((o, k) =>    //..4x wider pSum-cells.
-    k == 'm1' ?   o :  (o[k] =
-      { ...perfDayTypesToBorders[k], w: perfDayTypesToBorders[k].w / 4 },  o),
-  {});
+const pSumTypesToBorders =  // Reuse day-cell y1/m3/x borders (not m1) & adjust..
+  Object.keys(perfDayTypesToBorders).reduce(        // ..for 4x wider pSum-cells.
+    (o, k) => k == 'm1' ?   o :  (o[k] =
+        { ...perfDayTypesToBorders[k   ],
+          w: perfDayTypesToBorders[k   ].w / 4 },  o),
+  { va: { ...perfDayTypesToBorders['m3'],  // For variable timespan separators,..
+          w: perfDayTypesToBorders['m3'].w / 4 * 1.2 },  // ..e.g. pf-2m|pf-1m.
+  });
 
 
 // Default values for cell-drawing specification objects. These are all
@@ -471,7 +479,7 @@ function extendOpt(op) {
     var endType = psName == lastPSName  ?  ''   :
               /^ym\d\d12$/.test(psName) ?  'y1' :
       /^ym\d\d(03|06|09)$/.test(psName) ?  'm3' :
-                 /^m2|w2$/.test(psName) ?  'm3' :
+                 /^m2|w1$/.test(psName) ?  'va' :
                            factor === 0 ?  'x'  :  '';
     return !endType ?  [] :  [ pSumTypesToBorders[endType] ];
   }
@@ -1508,14 +1516,21 @@ function makeConf(opt, datas, funcs) {
     let rowObj = rowObjs[o.r];    // E.g. `bots.cat`.
     let factor = rowObj[psName];  // E.g. `bots.cat.y1`.
     if (factor === undefined)  return factor;    // If absent prop: draw nothing.
-    let factHi = opt.factorHigh[psName.slice(0,2)] ||  // slice: e.g. ym2109->ym.
-                 opt.factorHigh[
-                    psName      != 'v' ?  'm1' :
-                    days.length <=   7 ?  'w1' :  // 'v' => find factorHigh that..
-                    days.length <=  31 ?  'm1' :  // ..best fits the current..
-                    days.length <=  93 ?  'm3' :  // ..number of days in view.
-                    days.length <= 410 ?  'y1' :
-                    days.length <= 790 ?  'y2' : 'y3' ];
+    let factHi = opt.factorHigh[psName.slice(0,2)] ||  // slice: e.g. ym2109->ym,
+                 opt.factorHigh[                       // ..or        m1    ->m1.
+                    psName        == 'v' ?  (
+                      days.length <=   1 ?  'd1' :  // v => find factorHigh that..
+                      days.length <=   3 ?  'd3' :  // ..best fits the current..
+                      days.length <=   7 ?  'w1' :  // ..number of days in view.
+                      days.length <=  14 ?  'w2' :
+                      days.length <=  21 ?  'w3' :
+                      days.length <=  31 ?  'm1' :
+                      days.length <=  62 ?  'm2' :
+                      days.length <=  93 ?  'm3' :
+                      days.length <= 197 ?  'm6' :
+                      days.length <= 410 ?  'y1' :
+                      days.length <= 790 ?  'y2' : 'y3'
+                                            )    : 'm1' ]  // Fallback value.
     let descrRow = rowObj.id || rowObj.descr;
     let descrCol = pSumInfo.descrMini;
     return _(cell.pSum, {
